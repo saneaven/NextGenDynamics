@@ -141,7 +141,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "progress_reward",
             "velocity_alignment_reward",
             "reach_target_reward",
-            "forward_progress",
+            "forward_vel",
             "lin_vel_z_l2",
             "ang_vel_xy_l2",
             "dof_torques_l2",
@@ -280,7 +280,9 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # - Rewards -
         # Reward for progress towards the target
-        progress_reward = (self._previous_dist_to_target - dist_to_target) * 30 * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
+        progress_reward = (torch.exp((self._previous_dist_to_target - dist_to_target) / 2) - 1) * 30 \
+            * ((self._targets_reached*0.5)+1)
+        #torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Multipliy progress reward by distance to target (closer = more reward)
         #progress_reward *= (5 / torch.maximum(dist_to_target, torch.tensor(1, device=self.device)))
         
@@ -300,8 +302,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._previous_dist_to_target[:] = dist_to_target.clone()
         
 
-        # Reward for just moving forward in the robot's frame
-        forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
+        # Reward for just moving forward in the robot's frame (sqrt)
+        forward_vel_reward = (self._robot.data.root_lin_vel_b[:, 0]) #torch.sqrt
 
         # linear velocity tracking
         #lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -324,7 +326,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self.feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
-        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
+        air_time = torch.sum((last_air_time - 0.3) * first_contact, dim=1)
         # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
@@ -340,7 +342,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
             "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward * self.step_dt,
-            "forward_progress": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
+            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,

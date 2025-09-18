@@ -18,7 +18,6 @@ from isaaclab.utils import configclass
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # env
-    decimation = 4
     episode_length_s = 35.0
     # - spaces definition
     action_space = 12
@@ -26,6 +25,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     observation_space = 51 
     state_space = 0
     # simulation
+    decimation = 2
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
     # robot(s)
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -90,24 +90,24 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     flat_orientation_reward_scale = -20.0 #-5.0 #--
     """
     
-    action_scale = 0.275
+    action_scale = 0.2
 
-    progress_reward_scale = 3*5#1.2 #0.6 before sleep
-    progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 0.3*5#0.75
+    progress_reward_scale = 25
+    #progress_target_divisor = 7.5
+    velocity_alignment_reward_scale = 0.5
     # Multiplied by targets hit reward
-    reach_target_reward = 20#300.0*5 // To stablize training
-    forward_vel_reward_scale = 0.15*5 # need * 3
+    reach_target_reward = 20#// To stablize training
+    forward_vel_reward_scale = 3
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -2.0
-    ang_vel_reward_scale = -0.075 
+    ang_vel_reward_scale = -0.0375
     joint_torque_reward_scale = -0.00005 
-    joint_accel_reward_scale = -1e-7#-2.5e-7
+    joint_accel_reward_scale = -1.5e-7
     dof_vel_reward_scale = -5.0e-4
     action_rate_reward_scale = -0.01
-    feet_air_time_reward_scale = 2.5 #1.0 #0.5
-    undesired_contact_reward_scale = -3 #-1 before sleep
-    flat_orientation_reward_scale = -2.5 #0 #0
+    feet_air_time_reward_scale = 1.5
+    undesired_contact_reward_scale = -0.75
+    flat_orientation_reward_scale = -1
     
 
