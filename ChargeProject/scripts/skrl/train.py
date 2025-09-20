@@ -229,6 +229,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         flatten_rnn_parameters(runner.agent.model)
     # --------------------------------------------------------------------
 
+    env_cfg._agent = runner.agent  # to access the agent from within the env for logging
+    
     # load checkpoint (if specified)
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")

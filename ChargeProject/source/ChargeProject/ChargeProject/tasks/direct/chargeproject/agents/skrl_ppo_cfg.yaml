@@ -74,9 +74,10 @@ agent:
   # logging and checkpoint
   experiment:
     directory: "quadre"
-    experiment_name: ""
-    write_interval: auto
+    experiment_name: "Point to Point"
+    write_interval: 20
     checkpoint_interval: 500
+    tensorboard: True
 
 
 # Sequential trainer

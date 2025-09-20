@@ -23,17 +23,30 @@
             "host": "localhost"
         },
         {
+            // python -m tensorboard.main --logdir=logs
+            "name": "Python: Launch TensorBoard",
+            "type": "python",
+            "request": "launch",
+            "module": "tensorboard.main",
+            "args": [
+                "--logdir",
+                "logs",
+                "--host",
+                "localhost",
+                "--port",
+                "6006"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Python: Train Environment",
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "2000", "--video_length", "2000",
-                      // "--checkpoint", "C:\\School\\NextGenDynamics\\ChargeProject\\logs\\2025-09-19_14-26-30_ppo_torch switch to velocity alignment initial\\checkpoints\\agent_10500.pt"
                       // Speed forward
-                      // "--checkpoint", "C:\\School\\NextGenDynamics\\ChargeProject\\logs\\2025-09-19_11-29-28_ppo_torch forward sqrt\\checkpoints\\best_agent.pt"
-                      // Start of turning
-                      //"--checkpoint", "C:\\School\\NextGenDynamics\\ChargeProject\\logs\\2025-09-19_21-45-56_ppo_torch start of point to point\\checkpoints\\agent_15000.pt"
+                      // "--checkpoint", "checkpoints/runs_forward_fast.pt"
                       // More turning
-                      "--checkpoint", "C:\\School\\NextGenDynamics\\ChargeProject\\logs\\2025-09-19_23-52-13_ppo_torch better at going to target\\checkpoints\\agent_84500.pt"
+                      "--checkpoint", "checkpoints/forward_and_slight_target.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

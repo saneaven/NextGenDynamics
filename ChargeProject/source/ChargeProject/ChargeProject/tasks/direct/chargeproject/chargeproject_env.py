@@ -8,7 +8,6 @@ import math
 import colorsys
 
 import gymnasium as gym
-import numpy as np
 import torch
 from collections.abc import Sequence
 
@@ -25,139 +24,7 @@ from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 import isaaclab.utils.math as math_utils
 
-import csv
 import os
-
-#import multiprocessing as mp
-from multiprocessing.dummy import Process
-import threading
-import time
-import matplotlib.pyplot as plt
-import pandas as pd
-
-
-
-def live_plotter(csv_filepath: str, stop_event: threading.Event):
-    try:
-        plt.ion()
-        fig, (ax1, ax2) = plt.subplots(
-            2, 1, 
-            figsize=(12, 12), 
-            sharex=True,
-            gridspec_kw={'height_ratios': [3, 1]}
-        )
-
-        # --- State variables ---
-        lines_rewards = {}
-        lines_terminations = {}
-        last_data_length = 0
-        REWARD_MA_WINDOW = 200  # Set the moving average window
-        OTHER_MA_WINDOW = 10  # Set the moving average window
-        REWARD_CLIP_MIN = -0.01
-
-        # Get a color map to automatically assign different colors to each line
-        colormap = plt.get_cmap('tab20')
-        colors = [colormap(i) for i in np.linspace(0, 1, 20)]
-
-        # --- Plot setup ---
-        ax1.set_title(f"Live Reward Components ({REWARD_MA_WINDOW}-iteration Moving Average)")
-        ax1.set_ylabel("Smoothed Reward Value")
-        ax1.grid(True)
-
-        # Terminations subplot
-        ax2.set_title(f"Termination States ({OTHER_MA_WINDOW}-iteration Moving Average)")
-        ax2.set_xlabel("Episode Batch")
-        ax2.set_ylabel("Smoothed Count")
-        ax2.grid(True)
-
-        time.sleep(1)
-
-        # Loop until the main thread signals to stop
-        while not stop_event.is_set():
-            try:
-                df_full = pd.read_csv(csv_filepath)
-                if df_full.empty or len(df_full) <= last_data_length:
-                    # No new data, wait and continue
-                    time.sleep(2)
-                    continue
-
-                last_data_length = len(df_full)
-                
-                # --- NEW: Cut off the first 100 values for plotting ---
-                df = df_full.iloc[100:].reset_index(drop=True)
-
-
-                last_data_length = len(df)
-
-                # --- First-time setup for lines and legends ---
-                if not lines_rewards and not lines_terminations:
-                    reward_color_index = 0
-                    term_color_index = 0
-                    for col_name in df.columns:
-                        # Check for reward columns
-                        if "Episode_Reward/" in col_name:
-                            label_name = col_name.replace("Episode_Reward/", "")
-                            lines_rewards[col_name] = ax1.plot([], [], label=label_name, color=colors[reward_color_index % len(colors)])[0]
-                            reward_color_index += 1
-                        # Check for termination columns
-                        elif "Episode_Termination/" in col_name:
-                            label_name = col_name.replace("Episode_Termination/", "")
-                            lines_terminations[col_name] = ax2.plot([], [], label=label_name, color=colors[term_color_index % len(colors)])[0]
-                            term_color_index += 1
-                        elif "Episode_Info/" in col_name:
-                            label_name = col_name.replace("Episode_Info/", "")
-                            lines_terminations[col_name] = ax2.plot([], [], label=label_name, color=colors[term_color_index % len(colors)])[0]
-                            term_color_index += 1
-
-                    ax1.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
-                    ax2.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
-                    fig.tight_layout(rect=[0, 0, 0.85, 1])
-
-                # --- Update plots with all current data ---
-                # Update rewards plot
-                for col_name, line in lines_rewards.items():
-                    moving_avg = df[col_name].rolling(window=REWARD_MA_WINDOW, min_periods=1).mean()
-                    line.set_data(df.index, moving_avg)
-
-                # Update terminations plot
-                for col_name, line in lines_terminations.items():
-                    moving_avg = df[col_name].rolling(window=OTHER_MA_WINDOW, min_periods=1).mean()
-                    line.set_data(df.index, moving_avg)
-
-                # Rescale both axes
-                ax1.relim()
-                ax1.autoscale_view(True, True, True)
-                ax2.relim()
-                ax2.autoscale_view(True, True, True)
-
-                # Set lower y-limit for rewards to min(REWARD_CLIP_MIN, min of last values)
-                #_, current_top = ax1.get_ylim()
-                #last_row = df.iloc[-1]
-                #current_min = last_row[[col for col in last_row.index if "Episode_Reward/" in col]].min()
-                #ax1.set_ylim(top=current_top, bottom=min(REWARD_CLIP_MIN, current_min+0.0075))
-                #ax1.autoscale_view(True, True, True)
-
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-
-            #except (FileNotFoundError, pd.errors.EmptyDataError):
-                # Handle cases where the file doesn't exist yet or is empty
-                #print("Waiting for log file to be created...")
-            except Exception as e:
-                print(f"An error occurred in the plotter thread: {e}")
-
-            # Wait before polling the file again
-            time.sleep(2)
-
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        plt.ioff()
-        plt.close(fig)
-        print("Plotter thread has shut down.")
-
-
-
 
 
 class ChargeprojectEnv(DirectRLEnv):
@@ -205,27 +72,6 @@ class ChargeprojectEnv(DirectRLEnv):
         
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
-        self._log_file_path = os.path.join(log_dir, "training_log.csv")
-        
-        # Define the headers for your CSV file based on the keys in `extras["log"]`
-        self._log_fieldnames = [
-            f"Episode_Reward/{key}" for key in self.reward_labels
-        ] + [
-            "Episode_Termination/full_time_out",
-            "Episode_Termination/time_out",
-            "Episode_Termination/died",
-            "Episode_Info/10_targets_reached"
-        ]
-
-        # Open the file and create a CSV writer
-        # Using 'w' mode will overwrite the file at the start of each new training run
-        self._log_file = open(self._log_file_path, 'w', newline='')
-        self._csv_writer = csv.DictWriter(self._log_file, fieldnames=self._log_fieldnames)
-        self._csv_writer.writeheader()
-
-        self._stop_plotter_event = threading.Event()
-        self._plot_process = Process(target=live_plotter, args=(self._log_file_path, self._stop_plotter_event))
-        self._plot_process.start()
 
         self.extras["log"] = dict()
 
@@ -330,7 +176,7 @@ class ChargeprojectEnv(DirectRLEnv):
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
         # Add the amount of targets reached to log
-        self.extras["log"]["Episode_Info/10_targets_reached"] = torch.count_nonzero(self._targets_reached).item() / 10
+        self._log_data("Episode_Info/targets_reached", torch.count_nonzero(self._targets_reached).item())
 
         if len(reached_target_ids) > 0:
             # Generate a new target immediately for the environments that reached theirs
@@ -428,16 +274,37 @@ class ChargeprojectEnv(DirectRLEnv):
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         
         # Logging
-        extras = dict()
-
+        self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
         for key, value in rewards.items():
             episodic_sum_avg = torch.mean(value).item()
-            extras["Episode_Reward/" + key] = episodic_sum_avg
-        extras["Episode_Reward/total_reward"] = torch.mean(reward).item()
-        
-        self.extras["log"].update(extras)
+            self._log_data(f"Episode_Reward/rewards/{key}", episodic_sum_avg)
 
         return reward
+
+    def _log_data(self, key, data) -> None:
+        if hasattr(self.cfg, "_agent"):
+            self.cfg._agent.track_data(key, data)
+        else:
+            self.extras["log"][key] = data
+
+    def stepTest(self, action: torch.Tensor):
+        """Override the base step method to include custom logs."""
+        # 1. Perform the standard environment step by calling the parent method.
+        #    This will call your _get_observations, _get_rewards, _get_dones, etc.
+        #    and populate the self.extras["log"] dictionary internally.
+        return_val = super().step(action)
+
+        # 2. After the parent step, self.extras["log"] contains your new data.
+        #    Merge this data into the `info` dictionary that is returned to the skrl trainer.
+        if "log" in self.extras:
+            return_val[-1].update(self.extras["log"])
+            
+            # It's good practice to clear the log dict after it has been used
+            # to prevent old data from accidentally carrying over.
+            self.extras["log"].clear()
+
+        # 3. Return the updated info dictionary.
+        return return_val
     
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         full_time_out = self.episode_length_buf >= self.max_episode_length - 1
@@ -457,17 +324,9 @@ class ChargeprojectEnv(DirectRLEnv):
         #terminate = died | timed_out
         
         # Logging
-        extras = dict()
-        extras["Episode_Termination/full_time_out"] = torch.count_nonzero(full_time_out).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(timed_out).item()
-        extras["Episode_Termination/died"] = torch.count_nonzero(died).item()
-        self.extras["log"].update(extras)
-
-        if self._csv_writer is not None:
-            #log_data = {key: extras["Episode_Reward/" + key] for key in self.reward_labels}
-            self._csv_writer.writerow(self.extras["log"])
-            # Flush the file buffer to ensure data is written to disk immediately
-            #self._log_file.flush()
+        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item())
+        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item())
+        self._log_data("Episode_Termination/died", torch.count_nonzero(died).item())
 
 
         return died, timed_out | full_time_out
@@ -617,24 +476,3 @@ class ChargeprojectEnv(DirectRLEnv):
             scales=scales,
             marker_indices=marker_indices
         )
-
-
-        
-    def close(self):
-        print("Closing environment and shutting down plotter...")
-        # Signal the plotter thread to terminate
-        if hasattr(self, "_stop_plotter_event"):
-            self._stop_plotter_event.set()
-
-        # Wait for the plotter thread to finish
-        if hasattr(self, "_plot_process") and self._plot_process.is_alive():
-            self._plot_process.join(timeout=3)
-            if self._plot_process.is_alive():
-                print("Plotter thread did not shut down gracefully.")
-
-        # Close the log file
-        if hasattr(self, "_log_file") and not self._log_file.closed:
-            self._log_file.close()
-
-        super().close()
-
