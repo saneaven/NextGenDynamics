@@ -18,7 +18,7 @@ from isaaclab.utils import configclass
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 35.0
+    episode_length_s = 60.0
     # - spaces definition
     action_space = 12
     #observation_space = 48
@@ -61,53 +61,81 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1024*2, env_spacing=4.0, replicate_physics=True)
 
 
-    point_max_distance = 6.0
-    point_min_distance = 4.0
-    success_tolerance = 0.25  # meters
-    time_out_per_target = 16.0  # seconds
+    point_max_distance = 10#6.0
+    point_min_distance = 10#4.0
+    success_tolerance = 1  # meters
+    time_out_per_target = 12.0  # seconds
+    first_time_out_extra = -2.0  # seconds, between 0 and this
+    time_out_decrease_per_target = 0.1  # seconds
 
-    marker_colors = 50
+    marker_colors = 57
     
-    # reward scales
-    #lin_vel_reward_scale = 3.0
-    #yaw_rate_reward_scale = 0.5
     
-    """
-    # progress_reward = e^(-dist/2) * e^(targets_reached/PTD) * PRS
-    progress_reward_scale = 3.0*10
-    progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 0.75*15
-    # Multiplied by targets hit reward
-    reach_target_reward = 200.0
-    z_vel_reward_scale = -5.0
-    ang_vel_reward_scale = -0.05 #--
-    joint_torque_reward_scale = -0.010 / 8#-2.5e-5 #--
-    joint_accel_reward_scale = -1e-6 / 4
-    action_rate_reward_scale = -0.5 / 8#-0.2 #--
-    dof_vel_reward_scale = -0.015 / 4
-    feet_air_time_reward_scale = 2#0.5
-    undesired_contact_reward_scale = -0.5#-1.0 #-0.05 # -1.0
-    flat_orientation_reward_scale = -20.0 #-5.0 #--
-    """
-    
+    """ rewards for forward (with sqrt forward vel)
     action_scale = 0.2
 
-    progress_reward_scale = 25
+    progress_reward_scale = 0
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 0.5
+    velocity_alignment_reward_scale = 0
     # Multiplied by targets hit reward
-    reach_target_reward = 20#// To stablize training
-    forward_vel_reward_scale = 3
+    reach_target_reward = 0
+    forward_vel_reward_scale = 1.2 # 9 with linear
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
-    z_vel_reward_scale = -2.0
+    z_vel_reward_scale = -2
     ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -0.00005 
+    joint_torque_reward_scale = -5e-05
     joint_accel_reward_scale = -1.5e-7
-    dof_vel_reward_scale = -5.0e-4
-    action_rate_reward_scale = -0.01
+    dof_vel_reward_scale = 0#-0.0005
+    action_rate_reward_scale = -0.003
     feet_air_time_reward_scale = 1.5
     undesired_contact_reward_scale = -0.75
     flat_orientation_reward_scale = -1
+    """
     
+    
+
+    """ rewards for start of velocity alignment
+    action_scale = 0.2
+
+    progress_reward_scale = 100
+    #progress_target_divisor = 7.5
+    velocity_alignment_reward_scale = 1 #0#1.25*10
+    # Multiplied by targets hit reward
+    reach_target_reward = 200
+    forward_vel_reward_scale = 0.036
+    #lin_vel_reward_scale = 1.5
+    #yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2
+    ang_vel_reward_scale = -0.0375
+    joint_torque_reward_scale = -5e-05
+    joint_accel_reward_scale = -1.5e-7
+    dof_vel_reward_scale = 0#-0.0005
+    action_rate_reward_scale = -0.003
+    feet_air_time_reward_scale = 1.5
+    undesired_contact_reward_scale = -0.75
+    flat_orientation_reward_scale = -1
+    """
+    
+    action_scale = 0.2
+    
+    # chage learning_rate from 5.0e-04 to 3.0e-04
+    progress_reward_scale = 100
+    #progress_target_divisor = 7.5
+    velocity_alignment_reward_scale = 6 #0#1.25*10
+    # Multiplied by targets hit reward
+    reach_target_reward = 300
+    forward_vel_reward_scale = 0.025
+    #lin_vel_reward_scale = 1.5
+    #yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2
+    ang_vel_reward_scale = -0.0375
+    joint_torque_reward_scale = -5e-05
+    joint_accel_reward_scale = -1.5e-7
+    dof_vel_reward_scale = 0#-0.0005
+    action_rate_reward_scale = -0.003
+    feet_air_time_reward_scale = 1.5
+    undesired_contact_reward_scale = -0.75
+    flat_orientation_reward_scale = -1
+
 

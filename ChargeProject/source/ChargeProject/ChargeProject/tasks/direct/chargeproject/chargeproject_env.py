@@ -22,6 +22,8 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
 from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+import isaaclab.utils.math as math_utils
 
 import csv
 import os
@@ -38,62 +40,109 @@ import pandas as pd
 def live_plotter(csv_filepath: str, stop_event: threading.Event):
     try:
         plt.ion()
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, (ax1, ax2) = plt.subplots(
+            2, 1, 
+            figsize=(12, 12), 
+            sharex=True,
+            gridspec_kw={'height_ratios': [3, 1]}
+        )
 
         # --- State variables ---
-        lines = {}
+        lines_rewards = {}
+        lines_terminations = {}
         last_data_length = 0
-        MA_WINDOW = 50  # Set the moving average window
+        REWARD_MA_WINDOW = 200  # Set the moving average window
+        OTHER_MA_WINDOW = 10  # Set the moving average window
+        REWARD_CLIP_MIN = -0.01
 
         # Get a color map to automatically assign different colors to each line
         colormap = plt.get_cmap('tab20')
         colors = [colormap(i) for i in np.linspace(0, 1, 20)]
 
         # --- Plot setup ---
-        ax.set_title("Live Reward Components (50-iteration Moving Average)")
-        ax.set_xlabel("Episode Batch")
-        ax.set_ylabel("Smoothed Reward Value")
-        ax.grid(True)
+        ax1.set_title(f"Live Reward Components ({REWARD_MA_WINDOW}-iteration Moving Average)")
+        ax1.set_ylabel("Smoothed Reward Value")
+        ax1.grid(True)
+
+        # Terminations subplot
+        ax2.set_title(f"Termination States ({OTHER_MA_WINDOW}-iteration Moving Average)")
+        ax2.set_xlabel("Episode Batch")
+        ax2.set_ylabel("Smoothed Count")
+        ax2.grid(True)
+
+        time.sleep(1)
 
         # Loop until the main thread signals to stop
         while not stop_event.is_set():
             try:
-                # Read the latest data from the CSV
-                df = pd.read_csv(csv_filepath)
-                if df.empty or len(df) <= last_data_length:
+                df_full = pd.read_csv(csv_filepath)
+                if df_full.empty or len(df_full) <= last_data_length:
                     # No new data, wait and continue
                     time.sleep(2)
                     continue
 
+                last_data_length = len(df_full)
+                
+                # --- NEW: Cut off the first 100 values for plotting ---
+                df = df_full.iloc[100:].reset_index(drop=True)
+
+
                 last_data_length = len(df)
 
-                # --- First-time setup for lines and legend ---
-                if not lines:
-                    color_index = 0
-                    # Use the CSV columns to create plot lines
+                # --- First-time setup for lines and legends ---
+                if not lines_rewards and not lines_terminations:
+                    reward_color_index = 0
+                    term_color_index = 0
                     for col_name in df.columns:
-                        if "Episode_Reward" in col_name:
-                            # Clean up the name for the legend
+                        # Check for reward columns
+                        if "Episode_Reward/" in col_name:
                             label_name = col_name.replace("Episode_Reward/", "")
-                            lines[col_name] = ax.plot([], [], label=label_name, color=colors[color_index % len(colors)])[0]
-                            color_index += 1
-                    ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
+                            lines_rewards[col_name] = ax1.plot([], [], label=label_name, color=colors[reward_color_index % len(colors)])[0]
+                            reward_color_index += 1
+                        # Check for termination columns
+                        elif "Episode_Termination/" in col_name:
+                            label_name = col_name.replace("Episode_Termination/", "")
+                            lines_terminations[col_name] = ax2.plot([], [], label=label_name, color=colors[term_color_index % len(colors)])[0]
+                            term_color_index += 1
+                        elif "Episode_Info/" in col_name:
+                            label_name = col_name.replace("Episode_Info/", "")
+                            lines_terminations[col_name] = ax2.plot([], [], label=label_name, color=colors[term_color_index % len(colors)])[0]
+                            term_color_index += 1
+
+                    ax1.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
+                    ax2.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0), borderaxespad=0.)
                     fig.tight_layout(rect=[0, 0, 0.85, 1])
 
-                # --- Update plot with all current data ---
-                for col_name, line in lines.items():
-                    # Calculate moving average for the column
-                    moving_avg = df[col_name].rolling(window=MA_WINDOW, min_periods=1).mean()
+                # --- Update plots with all current data ---
+                # Update rewards plot
+                for col_name, line in lines_rewards.items():
+                    moving_avg = df[col_name].rolling(window=REWARD_MA_WINDOW, min_periods=1).mean()
                     line.set_data(df.index, moving_avg)
 
-                ax.relim()
-                ax.autoscale_view(True, True, True)
+                # Update terminations plot
+                for col_name, line in lines_terminations.items():
+                    moving_avg = df[col_name].rolling(window=OTHER_MA_WINDOW, min_periods=1).mean()
+                    line.set_data(df.index, moving_avg)
+
+                # Rescale both axes
+                ax1.relim()
+                ax1.autoscale_view(True, True, True)
+                ax2.relim()
+                ax2.autoscale_view(True, True, True)
+
+                # Set lower y-limit for rewards to min(REWARD_CLIP_MIN, min of last values)
+                #_, current_top = ax1.get_ylim()
+                #last_row = df.iloc[-1]
+                #current_min = last_row[[col for col in last_row.index if "Episode_Reward/" in col]].min()
+                #ax1.set_ylim(top=current_top, bottom=min(REWARD_CLIP_MIN, current_min+0.0075))
+                #ax1.autoscale_view(True, True, True)
+
                 fig.canvas.draw()
                 fig.canvas.flush_events()
 
-            except (FileNotFoundError, pd.errors.EmptyDataError):
+            #except (FileNotFoundError, pd.errors.EmptyDataError):
                 # Handle cases where the file doesn't exist yet or is empty
-                print("Waiting for log file to be created...")
+                #print("Waiting for log file to be created...")
             except Exception as e:
                 print(f"An error occurred in the plotter thread: {e}")
 
@@ -122,6 +171,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._next_desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
         self._time_since_target = torch.zeros(self.num_envs, device=self.device)
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
+        self._time_outs = torch.zeros(self.num_envs, device=self.device)
 
         self._actions = torch.zeros((self.num_envs, gym.spaces.flatdim(self.single_action_space)), device=self.device)
         self._previous_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
@@ -152,12 +202,6 @@ class ChargeprojectEnv(DirectRLEnv):
             "undesired_contacts",
             "flat_orientation_l2",
         ]
-
-        # Logging
-        self._episode_sums = {
-            key: torch.zeros(self.num_envs, dtype=torch.float, device=self.device)
-            for key in self.reward_labels
-        }
         
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
@@ -167,8 +211,10 @@ class ChargeprojectEnv(DirectRLEnv):
         self._log_fieldnames = [
             f"Episode_Reward/{key}" for key in self.reward_labels
         ] + [
+            "Episode_Termination/full_time_out",
+            "Episode_Termination/time_out",
             "Episode_Termination/died",
-            "Episode_Termination/time_out"
+            "Episode_Info/10_targets_reached"
         ]
 
         # Open the file and create a CSV writer
@@ -181,11 +227,19 @@ class ChargeprojectEnv(DirectRLEnv):
         self._plot_process = Process(target=live_plotter, args=(self._log_file_path, self._stop_plotter_event))
         self._plot_process.start()
 
+        self.extras["log"] = dict()
 
         # Save the variables in ChargeprojectEnvCfg to a text file for reference
         with open(os.path.join(log_dir, "env_config.txt"), 'w') as f:
             for attr, value in vars(self.cfg).items():
                 f.write(f"{attr}: {value}\n")
+        
+        # Save this file as well for reference
+        import inspect
+        current_file = inspect.getfile(inspect.currentframe())
+        with open(os.path.join(log_dir, "env_code.py.txt"), 'w') as f:
+            with open(current_file, 'r') as current_f:
+                f.write(current_f.read())
 
     def _setup_scene(self):
         self._robot = Articulation(self.cfg.robot)
@@ -193,8 +247,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
         self.scene.sensors["contact_sensor"] = self._contact_sensor
         
-        self.goal_pos_visualizer = self._create_random_color_markers(self.cfg.marker_colors, 0.25, "/Visuals/Command/goal_position")
-        self.identifier_visualizer = self._create_random_color_markers(self.cfg.marker_colors, 0.075, "/Visuals/Command/identifier")
+        self.goal_pos_visualizer = self._create_sphere_markers(self.cfg.marker_colors, 0.25, "/Visuals/Command/goal_position")
+        self.identifier_visualizer = self._create_arrow_markers(self.cfg.marker_colors, "/Visuals/Command/identifier_arrow")
 
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
@@ -208,6 +262,8 @@ class ChargeprojectEnv(DirectRLEnv):
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
+
+        self._up_dir = torch.tensor([0.0, 0.0, 1.0], device=self.device)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clone()
@@ -273,6 +329,9 @@ class ChargeprojectEnv(DirectRLEnv):
         reached_target = dist_to_target < self.cfg.success_tolerance
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
+        # Add the amount of targets reached to log
+        self.extras["log"]["Episode_Info/10_targets_reached"] = torch.count_nonzero(self._targets_reached).item() / 10
+
         if len(reached_target_ids) > 0:
             # Generate a new target immediately for the environments that reached theirs
             self._move_next_targets(reached_target_ids)
@@ -280,8 +339,12 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # - Rewards -
         # Reward for progress towards the target
-        progress_reward = (torch.exp((self._previous_dist_to_target - dist_to_target) / 2) - 1) * 30 \
-            * ((self._targets_reached*0.5)+1)
+        #progress_reward = (torch.exp((self._previous_dist_to_target - dist_to_target) / 2) - 1) * 30 \
+        #    * ((self._targets_reached*0.5)+1)
+        difference = self._previous_dist_to_target - dist_to_target
+        progress_reward = torch.sign(difference) * torch.square(difference) * 10
+        progress_reward = (difference)
+        progress_reward *= ((self._targets_reached * 0.5) + 1)
         #torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Multipliy progress reward by distance to target (closer = more reward)
         #progress_reward *= (5 / torch.maximum(dist_to_target, torch.tensor(1, device=self.device)))
@@ -292,6 +355,11 @@ class ChargeprojectEnv(DirectRLEnv):
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
             self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
         )
+        # VAR * 2 if reached target
+        # *2 for positive,*1/2 for negative
+        hit_target = self._targets_reached > 0
+        velocity_alignment_reward[hit_target & (velocity_alignment_reward > 0)] *= 2.0
+        velocity_alignment_reward[hit_target & (velocity_alignment_reward < 0)] *= 0.5
         #print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
         #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
@@ -303,7 +371,11 @@ class ChargeprojectEnv(DirectRLEnv):
         
 
         # Reward for just moving forward in the robot's frame (sqrt)
-        forward_vel_reward = (self._robot.data.root_lin_vel_b[:, 0]) #torch.sqrt
+        forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
+                           * torch.pow(torch.abs(self._robot.data.root_lin_vel_b[:, 0]), 1.0/2.0)
+        #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
+        #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
+        #forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
 
         # linear velocity tracking
         #lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -326,7 +398,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self.feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
-        air_time = torch.sum((last_air_time - 0.3) * first_contact, dim=1)
+        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
         # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
@@ -356,9 +428,15 @@ class ChargeprojectEnv(DirectRLEnv):
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
         
         # Logging
+        extras = dict()
+
         for key, value in rewards.items():
-            self._episode_sums[key] += value
-        self._episode_sums["total_reward"] += reward
+            episodic_sum_avg = torch.mean(value).item()
+            extras["Episode_Reward/" + key] = episodic_sum_avg
+        extras["Episode_Reward/total_reward"] = torch.mean(reward).item()
+        
+        self.extras["log"].update(extras)
+
         return reward
     
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -373,12 +451,26 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # died if gravity is positive (flipped over)
         #died = self._robot.data.projected_gravity_b[:, 2] > 0.0
-        #self._time_since_target += self.step_dt
-        timed_out = self._time_since_target > self.cfg.time_out_per_target
+        self._time_since_target += self.step_dt
+        timed_out = (self._time_since_target > self._time_outs)
+        # change it so seperate gtime_outs
+        #terminate = died | timed_out
+        
+        # Logging
+        extras = dict()
+        extras["Episode_Termination/full_time_out"] = torch.count_nonzero(full_time_out).item()
+        extras["Episode_Termination/time_out"] = torch.count_nonzero(timed_out).item()
+        extras["Episode_Termination/died"] = torch.count_nonzero(died).item()
+        self.extras["log"].update(extras)
 
-        terminate = died | timed_out
+        if self._csv_writer is not None:
+            #log_data = {key: extras["Episode_Reward/" + key] for key in self.reward_labels}
+            self._csv_writer.writerow(self.extras["log"])
+            # Flush the file buffer to ensure data is written to disk immediately
+            #self._log_file.flush()
 
-        return terminate, full_time_out
+
+        return died, timed_out | full_time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None:
@@ -386,6 +478,13 @@ class ChargeprojectEnv(DirectRLEnv):
             
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
+
+        # Set Next target positions to be reset position
+        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
+        self._move_next_targets(env_ids)
+        self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
+        self._time_outs[env_ids] = self.cfg.time_out_per_target + torch.rand(len(env_ids), device=self.device) * self.cfg.first_time_out_extra
+        self._targets_reached[env_ids] = 0
 
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
@@ -407,36 +506,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
-
-
-        # Set Next target positions to be reset position
-        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
-        self._move_next_targets(env_ids)
-        self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
         
-        
-        # Logging
-        extras = dict()
-
-        for key in self._episode_sums.keys():
-            episodic_sum_avg = torch.mean(self._episode_sums[key][env_ids])
-            extras["Episode_Reward/" + key] = episodic_sum_avg / self.max_episode_length_s
-            self._episode_sums[key][env_ids] = 0.0
-
-        self.extras["log"] = dict()
-        self.extras["log"].update(extras)
-        extras = dict()
-        extras["Episode_Termination/died"] = torch.count_nonzero(self.reset_terminated[env_ids]).item()
-        extras["Episode_Termination/time_out"] = torch.count_nonzero(self.reset_time_outs[env_ids]).item()
-        self.extras["log"].update(extras)
-
-        if self._csv_writer is not None:
-            # We need to detach tensors and move them to CPU before logging
-            log_data_cpu = {k: v.cpu().numpy() if isinstance(v, torch.Tensor) else v for k, v in self.extras["log"].items()}
-            self._csv_writer.writerow(log_data_cpu)
-            # Flush the file buffer to ensure data is written to disk immediately
-            self._log_file.flush()
-
 
     def _reached_target(self, env_ids):
         # Get robot and target positions (only x, y)
@@ -454,7 +524,10 @@ class ChargeprojectEnv(DirectRLEnv):
 
         num_resets = len(env_ids)
         
-        radius = (self.cfg.point_min_distance - self.cfg.point_max_distance) * torch.rand(num_resets, device=self.device) + self.cfg.point_max_distance
+        point_diff = self.cfg.point_max_distance - self.cfg.point_min_distance
+        radius = self.cfg.point_max_distance
+        if point_diff > 0.01:
+            radius += (self.cfg.point_min_distance - self.cfg.point_max_distance) * torch.rand(num_resets, device=self.device)
         angle = 2 * math.pi * torch.rand(num_resets, device=self.device)
         new_target_pos_xy = self._desired_pos[env_ids] + torch.stack([
             radius * torch.cos(angle),
@@ -473,48 +546,81 @@ class ChargeprojectEnv(DirectRLEnv):
         self._previous_dist_to_target[env_ids] = torch.linalg.norm(relative_pos, dim=1)
 
         self._time_since_target[env_ids] = 0.0
+        self._targets_reached[env_ids] += 1
+        self._time_outs[env_ids] = self.cfg.time_out_per_target - self._targets_reached[env_ids] * self.cfg.time_out_decrease_per_target
 
-    def _create_random_color_markers(self, num_markers: int, radius: float, prim_path: str) -> VisualizationMarkers:
-        # Seed the random number generator for reproducibility
-        markers = {}
-        for i in range(num_markers):
-            hue = (i / min(23.0, num_markers)) % 1.0  # Evenly space hues for maximum distinction
+    def _get_random_colors(self, num_colors: int) -> list[tuple[float, float, float]]:
+        colors = []
+        for i in range(num_colors):
+            # Evenly space hues for maximum color distinction
+            hue = (i / min(19.0, num_colors)) % 1.0
             saturation = 0.9
-            value = (i % 3) / 3.0 * 0.5 + 0.5  # Vary value to add brightness differences
+            value = (i % 3) / 3.0 * 0.5 + 0.5  # Vary brightness
             rgb_color = colorsys.hsv_to_rgb(hue, saturation, value)
+            colors.append(rgb_color)
+        return colors
 
-            # Create the unique key for the marker
+    def _create_sphere_markers(self, num_markers: int, radius: float, prim_path: str, opacity: float = 1) -> VisualizationMarkers:
+        colors = self._get_random_colors(num_markers)
+        markers = {}
+        for i, color in enumerate(colors):
             marker_key = f"sphere{i}"
-
-            # Create the sphere configuration with the random color
             markers[marker_key] = sim_utils.SphereCfg(
                 radius=radius,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=rgb_color),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, opacity=opacity),
             )
+        marker_cfg = VisualizationMarkersCfg(prim_path=prim_path, markers=markers)
+        return VisualizationMarkers(marker_cfg)
 
-        # Create the top-level configuration for the visualizer
-        marker_cfg = VisualizationMarkersCfg(prim_path, markers)
+    def _create_arrow_markers(self, num_markers: int, prim_path: str) -> VisualizationMarkers:
+        colors = self._get_random_colors(num_markers)
+        markers = {}
+        for i, color in enumerate(colors):
+            marker_key = f"arrow{i}"
+            # Load the arrow mesh provided by Isaac Lab
+            markers[marker_key] = sim_utils.UsdFileCfg(
+                usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
+            )
+        marker_cfg = VisualizationMarkersCfg(prim_path=prim_path, markers=markers)
         return VisualizationMarkers(marker_cfg)
 
     def _visualize_markers(self):
-        # get marker locations and orientations
+        # --- Goal Sphere Marker (remains the same as before) ---
         desired_pos_3d = torch.cat(
-            [self._desired_pos, 0.2 * torch.ones((self.num_envs, 1), device=self.device)],
-            dim=-1
+            [self._desired_pos, 0.2 * torch.ones((self.num_envs, 1), device=self.device)], dim=-1
         )
-
-        # marker index list (repeating 0-num_markers)
         marker_indices = torch.arange(self.num_envs, device=self.device) % self.cfg.marker_colors
-
         self.goal_pos_visualizer.visualize(desired_pos_3d, marker_indices=marker_indices)
+
+        # --- Identifier Arrow Marker ---
+        robot_pos_2d = self._robot.data.root_pos_w[:, :2]
+        relative_target_pos = self._desired_pos - robot_pos_2d
+        yaw = torch.atan2(relative_target_pos[:, 1], relative_target_pos[:, 0])
+        orientations = math_utils.quat_from_angle_axis(yaw, self._up_dir)
+
+        dist_to_target = torch.linalg.norm(relative_target_pos, dim=1)
+        # Linearly interpolate scale from 0.15 down to 0 as the robot gets closer
+        # Clamp between 0.0 and 1.0 to handle cases where the robot is farther than max_dist
+        # The maximum distance should be `self.cfg.point_max_distance`
+        scale_factor = torch.clamp(dist_to_target / self.cfg.point_max_distance, 0.0, 1.0)
+        # Base scale for the arrow's width and height
+        arrow_thickness_scale = 0.15 * scale_factor.unsqueeze(1)
+        # Make the arrow's length (x-axis) a bit longer for better visibility, relative to thickness
+        scales = torch.cat([2 * arrow_thickness_scale, arrow_thickness_scale, arrow_thickness_scale], dim=1)
+
+        arrow_positions = self._robot.data.root_pos_w + torch.tensor([0.0, 0.0, 0.5], device=self.device)
+
         self.identifier_visualizer.visualize(
-            self._robot.data.root_pos_w + torch.tensor([0.0, 0.0, 0.3], device=self.device).unsqueeze(0), 
-            marker_indices=marker_indices)
+            translations=arrow_positions,
+            orientations=orientations,
+            scales=scales,
+            marker_indices=marker_indices
+        )
 
 
         
     def close(self):
-        """Cleans up resources used by the environment, like the plotting thread and log file."""
         print("Closing environment and shutting down plotter...")
         # Signal the plotter thread to terminate
         if hasattr(self, "_stop_plotter_event"):
