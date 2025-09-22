@@ -120,19 +120,27 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.set_joint_position_target(self.processed_actions)#, joint_ids=self.dof_idx)
         #self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
 
+    def _get_relative_target_info(self, target_pos_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        relative_target_pos_w = target_pos_w - self._robot.data.root_pos_w[:, :2]
+        distance = torch.linalg.norm(relative_target_pos_w, dim=1, keepdim=True)
+
+        # Pad the 2D world vector to 3D for rotation (z=0)
+        relative_target_pos_w_3d = torch.cat((relative_target_pos_w, torch.zeros_like(distance)), dim=1)
+
+        # Rotate the world vector into the robot's local body frame
+        relative_target_pos_b_3d = math_utils.quat_apply_inverse(self._robot.data.root_quat_w, relative_target_pos_w_3d)
+
+        # Normalize the resulting 2D body-frame vector to get the unit vector
+        unit_vector_b = relative_target_pos_b_3d[:, :2] / (distance + 1e-6)
+
+        return unit_vector_b, distance
+
+
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
         
-        # Get unit vector and distance to target
-        relative_target_pos = self._desired_pos - self._robot.data.root_pos_w[:, :2]
-        distance_to_target = torch.linalg.norm(relative_target_pos, dim=1, keepdim=True)
-        unit_vector_to_target = relative_target_pos / (distance_to_target + 1e-6)
-
-        # Get unit vector and distance to next target
-        relative_next_target_pos = self._next_desired_pos - self._robot.data.root_pos_w[:, :2]
-        distance_to_next_target = torch.linalg.norm(relative_next_target_pos, dim=1, keepdim=True)
-        unit_vector_to_next_target = relative_next_target_pos / (distance_to_next_target + 1e-6)
-
+        target_unit_vector, target_distance = self._get_relative_target_info(self._desired_pos)
+        next_target_unit_vector, next_target_distance = self._get_relative_target_info(self._next_desired_pos)
 
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
@@ -142,10 +150,10 @@ class ChargeprojectEnv(DirectRLEnv):
                     self._robot.data.root_lin_vel_b,
                     self._robot.data.root_ang_vel_b,
                     self._robot.data.projected_gravity_b,
-                    unit_vector_to_target,
-                    distance_to_target,
-                    unit_vector_to_next_target,
-                    distance_to_next_target,
+                    target_unit_vector,
+                    target_distance,
+                    next_target_unit_vector,
+                    next_target_distance,
                     #self._commands,
                     self._robot.data.joint_pos - self._robot.data.default_joint_pos,
                     self._robot.data.joint_vel,
@@ -175,12 +183,17 @@ class ChargeprojectEnv(DirectRLEnv):
         reached_target = dist_to_target < self.cfg.success_tolerance
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
-        # Add the amount of targets reached to log
-        self._log_data("Episode_Info/targets_reached", torch.count_nonzero(self._targets_reached).item())
-
         if len(reached_target_ids) > 0:
             # Generate a new target immediately for the environments that reached theirs
             self._move_next_targets(reached_target_ids)
+            
+        # Add the amount of targets reached to log
+        self._log_data("Episode_Info/targets_reached_avg", torch.mean(self._targets_reached.float()).item())
+        self._log_data("Episode_Info/targets_reached", torch.count_nonzero(self._targets_reached).item())
+        self._log_data("Episode_Info/targets_reached_2", torch.count_nonzero(self._targets_reached >= 2).item())
+        self._log_data("Episode_Info/targets_reached_3", torch.count_nonzero(self._targets_reached >= 3).item())
+        self._log_data("Episode_Info/targets_reached_4", torch.count_nonzero(self._targets_reached >= 4).item())
+        self._log_data("Episode_Info/targets_reached_5", torch.count_nonzero(self._targets_reached >= 5).item())
 
 
         # - Rewards -
@@ -204,8 +217,11 @@ class ChargeprojectEnv(DirectRLEnv):
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
         hit_target = self._targets_reached > 0
-        velocity_alignment_reward[hit_target & (velocity_alignment_reward > 0)] *= 2.0
-        velocity_alignment_reward[hit_target & (velocity_alignment_reward < 0)] *= 0.5
+        multiplier = torch.minimum(1 + self._targets_reached, torch.tensor(3.5, device=self.device))
+        hit_and_positive = hit_target & (velocity_alignment_reward > 0)
+        velocity_alignment_reward[hit_and_positive] *= multiplier[hit_and_positive]
+        hit_and_negative = hit_target & (velocity_alignment_reward < 0)
+        velocity_alignment_reward[hit_and_negative] /= multiplier[hit_and_negative] * 2.0
         #print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
         #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
@@ -338,12 +354,6 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
 
-        # Set Next target positions to be reset position
-        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
-        self._move_next_targets(env_ids)
-        self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
-        self._time_outs[env_ids] = self.cfg.time_out_per_target + torch.rand(len(env_ids), device=self.device) * self.cfg.first_time_out_extra
-        self._targets_reached[env_ids] = 0
 
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
@@ -366,6 +376,13 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
+        # Set Next target positions to be reset position
+        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
+        self._move_next_targets(env_ids)
+        self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
+
+        self._time_outs[env_ids] = self.cfg.time_out_per_target + torch.rand(len(env_ids), device=self.device) * self.cfg.first_time_out_extra
+        self._targets_reached[env_ids] = 0
 
     def _reached_target(self, env_ids):
         # Get robot and target positions (only x, y)
@@ -393,11 +410,7 @@ class ChargeprojectEnv(DirectRLEnv):
             radius * torch.sin(angle)
         ], dim=1)
 
-        # for debugging just go straight forward (2, 0)
-        #new_target_pos_xy = self._desired_pos[env_ids] + torch.tensor([1.0, 0.0], device=self.device).unsqueeze(0).repeat(num_resets, 1)
-
         # Update current and next desired positions
-        self._desired_pos[env_ids] = self._next_desired_pos[env_ids].clone()
         self._next_desired_pos[env_ids] = new_target_pos_xy
         
         # set _previous_dist_to_target to initial distance to target

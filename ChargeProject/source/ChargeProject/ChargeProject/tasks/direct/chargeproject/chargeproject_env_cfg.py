@@ -61,10 +61,10 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1024*2, env_spacing=4.0, replicate_physics=True)
 
 
-    point_max_distance = 10#6.0
+    point_max_distance = 20#6.0
     point_min_distance = 10#4.0
-    success_tolerance = 1  # meters
-    time_out_per_target = 12.0  # seconds
+    success_tolerance = 0.25 #1  # meters
+    time_out_per_target = 16.0  # seconds
     first_time_out_extra = -2.0  # seconds, between 0 and this
     time_out_decrease_per_target = 0.1  # seconds
 
@@ -120,12 +120,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     action_scale = 0.2
     
     # chage learning_rate from 5.0e-04 to 3.0e-04
-    progress_reward_scale = 100
+    progress_reward_scale = 100#100
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 6 #0#1.25*10
+    velocity_alignment_reward_scale = 2# 6
     # Multiplied by targets hit reward
-    reach_target_reward = 300
-    forward_vel_reward_scale = 0.025
+    reach_target_reward = 1000#250
+    forward_vel_reward_scale = 0.075
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -2

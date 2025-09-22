@@ -46,7 +46,11 @@
                       // Speed forward
                       // "--checkpoint", "checkpoints/runs_forward_fast.pt"
                       // More turning
-                      "--checkpoint", "checkpoints/forward_and_slight_target.pt"
+                      //"--checkpoint", "checkpoints/forward_and_slight_target.pt"
+                      // Better turning
+                      //"--checkpoint", "checkpoints/decent_target.pt"
+                      // toarget tracking
+                      "--checkpoint", "checkpoints/goes_between_targets.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
