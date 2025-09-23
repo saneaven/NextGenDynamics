@@ -175,8 +175,8 @@ class ChargeprojectEnv(DirectRLEnv):
         thresholds = torch.arange(1, 30, 3, device=self.device)
         counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0)
 
-        for i, c in enumerate(counts, start=1):
-            self._log_data(f"Episode_Info/targets_reached_{i}", c.item())
+        for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
+            self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
 
         # - Rewards -
         # Reward for progress towards the target
