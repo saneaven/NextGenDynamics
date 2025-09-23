@@ -39,6 +39,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._previous_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         
         self._last_targets_reached = torch.zeros(self.num_envs, device=self.device)
+        
+        self.died = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         # X/Y linear velocity and yaw angular velocity commands
         #self._commands = torch.zeros(self.num_envs, 3, device=self.device)
@@ -170,7 +172,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._log_data("Episode_Info/targets_reached_max", self._last_targets_reached.max().item())
 
         # Counts for thresholds 1 through 8 in one go
-        thresholds = torch.arange(1, self.cfg.max_targets_log + 1, device=self.device)
+        thresholds = torch.arange(1, 30, 3, device=self.device)
         counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0)
 
         for i, c in enumerate(counts, start=1):
@@ -214,6 +216,10 @@ class ChargeprojectEnv(DirectRLEnv):
 
         self._previous_target_distance= self._target_distance.clone()
         
+        
+        net_contact_forces = self._contact_sensor.data.net_forces_w_history
+        self.died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self.base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
+        death_penalty = self.died.float() * self.cfg.death_penalty_scale
 
         # Reward for just moving forward in the robot's frame (sqrt)
         #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
@@ -259,7 +265,8 @@ class ChargeprojectEnv(DirectRLEnv):
             "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
             "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
             #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
-            "reach_target_reward": target_reward * self.cfg.reach_target_reward * self.step_dt,
+            "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
             #"forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
@@ -289,9 +296,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         full_time_out = self.episode_length_buf >= self.max_episode_length - 1
-
-        net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self.base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
+        
 
         # Terminate if body is below certain height
         #body_height = self._robot.data.body_pos_w[:, self.body_id, 2]
@@ -307,10 +312,10 @@ class ChargeprojectEnv(DirectRLEnv):
         # Logging
         self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item())
         self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item())
-        self._log_data("Episode_Termination/died", torch.count_nonzero(died).item())
+        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item())
 
 
-        return died, timed_out | full_time_out
+        return self.died, timed_out | full_time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
         if env_ids is None:

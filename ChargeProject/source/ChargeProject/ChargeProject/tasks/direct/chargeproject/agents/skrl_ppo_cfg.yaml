@@ -74,7 +74,7 @@ agent:
   # logging and checkpoint
   experiment:
     directory: "quadre"
-    experiment_name: "Load both next dist"
+    experiment_name: ""
     write_interval: 20
     checkpoint_interval: 500
     tensorboard: True
