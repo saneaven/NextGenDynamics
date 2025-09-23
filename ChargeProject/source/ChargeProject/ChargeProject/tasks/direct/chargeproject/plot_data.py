@@ -3,94 +3,129 @@ import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 from tensorboard.backend.event_processing import event_accumulator
+import numpy as np
 
 
 # Will auto select the latest run if None
 log_dir = None
+POLL_INTERVAL = 1
+# Window size for the moving average. Set to 1 to disable smoothing.
+SMOOTHING_WINDOW = 1
 #log_dir = "logs\\skrl\\quadre\\2025-09-23_10-04-10_ppo_torch_Load both next dist"
 
 
-
 # Parses tfevents into a DataFrame
-def parse_tfevents_to_dataframe(tfevents_file):
-    print(f"Reading data from: {tfevents_file}")
+def parse_tfevents_to_dataframe(tfevents_file, acc):
+    acc.Reload()  # Reloads the file to get the latest data
     
-    # Initialize the accumulator
-    acc = event_accumulator.EventAccumulator(tfevents_file)
-    acc.Reload()  # Load all data from the file
-    
-    # Get all scalar tags
     tags = acc.Tags()['scalars']
     
     all_data = []
     for tag in tags:
-        events = acc.Scalars(tag)
-        for event in events:
-            all_data.append({
-                'tag': tag,
-                'step': event.step,
-                'value': event.value
-            })
-            
-    print(f"Found {len(all_data)} data points across {len(tags)} tags.")
+        # Filter for only the reward-related tags at the source
+        if tag.startswith('Episode_Reward/'):
+            events = acc.Scalars(tag)
+            for event in events:
+                all_data.append({
+                    'tag': tag,
+                    'step': event.step,
+                    'value': event.value
+                })
+                
+    if not all_data:
+        return pd.DataFrame() # Return empty DataFrame if no reward data yet
+
     return pd.DataFrame(all_data)
 
 # If log_dir is not set get the latest folder in logs/skrl/quadre
 if log_dir is None:
     base_log_dir = "logs/skrl/quadre"
     all_runs = glob.glob(os.path.join(base_log_dir, "*"))
-    if not all_runs:
-        print(f"No runs found in '{base_log_dir}'")
-        exit()
     log_dir = max(all_runs, key=os.path.getmtime)
     print(f"No log_dir specified. Using the latest run: {log_dir}")
 
 # Find the .tfevents file automatically
-try:
-    event_file_path = glob.glob(os.path.join(log_dir, 'events.out.tfevents.*'))[0]
-except IndexError:
-    print(f"Error: Could not find a .tfevents file in '{log_dir}'")
-    exit()
+event_file_path = glob.glob(os.path.join(log_dir, 'events.out.tfevents.*'))[0]
 
 
-# Read all scalar data from the log file
-full_df = parse_tfevents_to_dataframe(event_file_path)
+print(f"Reading data from: {event_file_path}")
 
-# Filter for only the reward-related tags
-# This captures the total reward and all individual components
-reward_tags_df = full_df[
-    full_df['tag'].str.startswith('Episode_Reward/')
-].copy() # Use .copy() to avoid SettingWithCopyWarning
-
-
-# Plotting
+# 2. Setup the plot
+plt.ion() # Turn on interactive mode
 fig, ax = plt.subplots(figsize=(16, 9))
+lines = {} # Dictionary to store line objects, mapping tag_name to a line
+event_acc = event_accumulator.EventAccumulator(event_file_path)
 
-# Plot each reward component
-for tag_name in reward_tags_df['tag'].unique():
-    # Get the data for the current reward component
-    subset_df = reward_tags_df[reward_tags_df['tag'] == tag_name]
-    
-    # Clean up the label name for the legend
-    clean_label = tag_name.replace('Episode_Reward/', '')
-    
-    ax.plot(subset_df['step'], subset_df['value'], label=clean_label, alpha=0.8)
+# Use a colormap to automatically assign different colors to new lines
+colormap = plt.get_cmap('tab20')
+colors = [colormap(i) for i in np.linspace(0, 1, 20)]
+color_index = 0
 
-# Customize the plot
-ax.set_title("Reward Components Over Training Steps", fontsize=18)
-ax.set_xlabel("Training Step", fontsize=12)
-ax.set_ylabel("Reward Value", fontsize=12)
-ax.legend(title="Reward Components", bbox_to_anchor=(1.02, 1), loc='upper left')
-ax.grid(True, which='both', linestyle='--', linewidth=0.5)
-fig.tight_layout()
+print("Starting live plot. Press Ctrl+C to exit.")
 
-# if looking at small rewards
+# 3. Live update loop
+try:
+    while True:
+        # Read all available scalar data
+        reward_tags_df = parse_tfevents_to_dataframe(event_file_path, event_acc)
 
-#ax.set_ylim(-0.01, 0.01)
+        if reward_tags_df.empty:
+            print("No reward data found yet. Waiting...")
+            plt.pause(POLL_INTERVAL)
+            continue
+            
+        # Get all unique reward tags found so far
+        unique_tags = reward_tags_df['tag'].unique()
 
-# Save the figure to a file
-#plt.savefig("reward_overlap_plot.png", dpi=300)
-#print("\nPlot saved as 'reward_overlap_plot.png'")
+        # Update or create a line for each reward component
+        for tag_name in unique_tags:
+            subset_df = reward_tags_df[reward_tags_df['tag'] == tag_name].copy()
+            
+            # Apply moving average for smoothing
+            if SMOOTHING_WINDOW > 1:
+                subset_df['value'] = subset_df['value'].rolling(window=SMOOTHING_WINDOW, min_periods=1).mean()
 
-# Display the plot
-plt.show()
+            clean_label = tag_name.replace('Episode_Reward/', '')
+            
+            # If this is a new tag, create a new line object
+            if tag_name not in lines:
+                print(f"New reward component found: {clean_label}")
+                line_color = colors[color_index % len(colors)]
+                color_index += 1
+                lines[tag_name] = ax.plot(
+                    subset_df['step'], 
+                    subset_df['value'], 
+                    label=clean_label, 
+                    alpha=0.9,
+                    color=line_color
+                )[0]
+            # Otherwise, just update the data of the existing line
+            else:
+                lines[tag_name].set_data(subset_df['step'], subset_df['value'])
+
+        # Customize the plot
+        ax.set_title(f"Live Reward Components ({SMOOTHING_WINDOW}-Step Moving Average)", fontsize=18)
+        ax.set_xlabel("Training Step", fontsize=12)
+        ax.set_ylabel("Smoothed Reward Value", fontsize=12)
+        ax.legend(title="Reward Components", bbox_to_anchor=(1.02, 1), loc='upper left')
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+        
+        # Rescale the axes to fit the new data
+        ax.relim()
+        ax.autoscale_view()
+        
+        # Redraw the canvas
+        fig.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust for legend
+        fig.canvas.draw()
+        fig.canvas.flush_events()
+        
+        plt.pause(POLL_INTERVAL)
+
+except KeyboardInterrupt:
+    print("\nPlotting stopped.")
+finally:
+    plt.ioff() # Turn off interactive mode
+    # Optional: save the final plot
+    # plt.savefig("final_reward_plot.png", dpi=300)
+    print("Final plot window is open. You can close it manually.")
+    plt.show() # Show the final plot and block until closed

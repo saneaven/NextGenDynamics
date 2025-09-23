@@ -219,7 +219,7 @@ class ChargeprojectEnv(DirectRLEnv):
         
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         self.died = torch.any(torch.max(torch.norm(net_contact_forces[:, :, self.base_id], dim=-1), dim=1)[0] > 1.0, dim=1)
-        death_penalty = self.died.float() * self.cfg.death_penalty_scale
+        death_penalty = self.died.float()
 
         # Reward for just moving forward in the robot's frame (sqrt)
         #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
