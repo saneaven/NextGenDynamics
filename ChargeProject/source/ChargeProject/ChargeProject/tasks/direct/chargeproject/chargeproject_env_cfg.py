@@ -152,7 +152,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     reach_target_reward_scale = 30
     forward_vel_reward_scale = 0#0.075
     time_penalty_scale = -1
-    death_penalty_scale = -250
+    death_penalty_scale = -1000
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -2

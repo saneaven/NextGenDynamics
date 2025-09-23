@@ -15,7 +15,7 @@ SMOOTHING_WINDOW = 1
 
 
 # Parses tfevents into a DataFrame
-def parse_tfevents_to_dataframe(tfevents_file, acc):
+def parse_tfevents_to_dataframe(acc):
     acc.Reload()  # Reloads the file to get the latest data
     
     tags = acc.Tags()['scalars']
@@ -67,7 +67,7 @@ print("Starting live plot. Press Ctrl+C to exit.")
 try:
     while True:
         # Read all available scalar data
-        reward_tags_df = parse_tfevents_to_dataframe(event_file_path, event_acc)
+        reward_tags_df = parse_tfevents_to_dataframe(event_acc)
 
         if reward_tags_df.empty:
             print("No reward data found yet. Waiting...")
@@ -89,7 +89,6 @@ try:
             
             # If this is a new tag, create a new line object
             if tag_name not in lines:
-                print(f"New reward component found: {clean_label}")
                 line_color = colors[color_index % len(colors)]
                 color_index += 1
                 lines[tag_name] = ax.plot(
