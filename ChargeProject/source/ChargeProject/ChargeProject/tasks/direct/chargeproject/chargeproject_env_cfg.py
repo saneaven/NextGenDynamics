@@ -61,12 +61,13 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1024*2, env_spacing=4.0, replicate_physics=True)
 
 
-    point_max_distance = 20#6.0
-    point_min_distance = 10#4.0
+    point_max_distance = 10 #20 #6.0
+    point_min_distance = 5 #10 #4.0
     success_tolerance = 0.25 #1  # meters
     time_out_per_target = 16.0  # seconds
     first_time_out_extra = -2.0  # seconds, between 0 and this
     time_out_decrease_per_target = 0.1  # seconds
+    max_targets_log = 8
 
     marker_colors = 57
     
@@ -117,10 +118,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     flat_orientation_reward_scale = -1
     """
     
+    """ rewards for training point to point
     action_scale = 0.2
     
     # chage learning_rate from 5.0e-04 to 3.0e-04
-    progress_reward_scale = 100#100
+    progress_reward_scale = 100
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 2# 6
     # Multiplied by targets hit reward
@@ -137,5 +139,28 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_air_time_reward_scale = 1.5
     undesired_contact_reward_scale = -0.75
     flat_orientation_reward_scale = -1
+    """
+    
 
+    # Final rewards
+    action_scale = 0.2
+    
+    progress_reward_scale = 50 #100
+    #progress_target_divisor = 7.5
+    velocity_alignment_reward_scale = 0 #2
+    # Multiplied by targets hit reward
+    reach_target_reward = 750
+    forward_vel_reward_scale = 0#0.075
+    time_penalty_scale = -1.5
+    #lin_vel_reward_scale = 1.5
+    #yaw_rate_reward_scale = 0.75
+    z_vel_reward_scale = -2
+    ang_vel_reward_scale = -0.0375
+    joint_torque_reward_scale = -5e-05
+    joint_accel_reward_scale = -1.5e-7
+    dof_vel_reward_scale = 0#-0.0005
+    action_rate_reward_scale = -0.003
+    feet_air_time_reward_scale = 1.5
+    undesired_contact_reward_scale = -0.75
+    flat_orientation_reward_scale = -1
 

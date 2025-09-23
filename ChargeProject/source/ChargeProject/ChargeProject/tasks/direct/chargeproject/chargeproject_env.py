@@ -1,8 +1,3 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 from __future__ import annotations
 import math
 import colorsys
@@ -43,6 +38,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._actions = torch.zeros((self.num_envs, gym.spaces.flatdim(self.single_action_space)), device=self.device)
         self._previous_actions = torch.zeros(self.num_envs, gym.spaces.flatdim(self.single_action_space), device=self.device)
         
+        self._last_targets_reached = torch.zeros(self.num_envs, device=self.device)
+
         # X/Y linear velocity and yaw angular velocity commands
         #self._commands = torch.zeros(self.num_envs, 3, device=self.device)
         
@@ -51,24 +48,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self.undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(self.cfg.undesired_contact_body_names)
         self.body_id = self._robot.data.body_names.index(self.cfg.base_name)
 
-        self._previous_dist_to_target = torch.zeros(self.num_envs, device=self.device)
-
-        self.reward_labels = [
-            "total_reward",
-            "progress_reward",
-            "velocity_alignment_reward",
-            "reach_target_reward",
-            "forward_vel",
-            "lin_vel_z_l2",
-            "ang_vel_xy_l2",
-            "dof_torques_l2",
-            "dof_acc_l2",
-            "dof_vel_l2",
-            "action_rate_l2",
-            "feet_air_time",
-            "undesired_contacts",
-            "flat_orientation_l2",
-        ]
+        self._target_distance = torch.zeros(self.num_envs, device=self.device)
+        self._previous_target_distance = torch.zeros(self.num_envs, device=self.device)
         
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
@@ -142,6 +123,7 @@ class ChargeprojectEnv(DirectRLEnv):
         target_unit_vector, target_distance = self._get_relative_target_info(self._desired_pos)
         next_target_unit_vector, next_target_distance = self._get_relative_target_info(self._next_desired_pos)
 
+        self._target_distance = target_distance.squeeze(-1) 
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
             [
@@ -169,72 +151,73 @@ class ChargeprojectEnv(DirectRLEnv):
         return observations
 
     def _get_rewards(self) -> torch.Tensor:
-        # Robots were killing themselfs and hoping to spawn closer + not rewarded enough for getting closer
-        # it also could be launching itself as fast as it can forward dying in the process
-
-        # - Changes target if rached -
         # Get robot and target positions (only x, y)
-        robot_pos = self._robot.data.root_pos_w[:, :2]
+        #robot_pos = self._robot.data.root_pos_w[:, :2]
         # Calculate distance
-        relative_pos = self._desired_pos - robot_pos
-        dist_to_target = torch.linalg.norm(relative_pos, dim=1)
+        #relative_pos = self._desired_pos - robot_pos
 
         # Check if distance is within tolerance
-        reached_target = dist_to_target < self.cfg.success_tolerance
+        reached_target = self._target_distance < self.cfg.success_tolerance
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
+        # Generate a new target immediately for the environments that reached theirs
         if len(reached_target_ids) > 0:
-            # Generate a new target immediately for the environments that reached theirs
             self._move_next_targets(reached_target_ids)
             
         # Add the amount of targets reached to log
-        self._log_data("Episode_Info/targets_reached_avg", torch.mean(self._targets_reached.float()).item())
-        self._log_data("Episode_Info/targets_reached", torch.count_nonzero(self._targets_reached).item())
-        self._log_data("Episode_Info/targets_reached_2", torch.count_nonzero(self._targets_reached >= 2).item())
-        self._log_data("Episode_Info/targets_reached_3", torch.count_nonzero(self._targets_reached >= 3).item())
-        self._log_data("Episode_Info/targets_reached_4", torch.count_nonzero(self._targets_reached >= 4).item())
-        self._log_data("Episode_Info/targets_reached_5", torch.count_nonzero(self._targets_reached >= 5).item())
+        # Average and max
+        self._log_data("Episode_Info/targets_reached_avg", self._last_targets_reached.float().mean().item())
+        self._log_data("Episode_Info/targets_reached_max", self._last_targets_reached.max().item())
 
+        # Counts for thresholds 1 through 8 in one go
+        thresholds = torch.arange(1, self.cfg.max_targets_log + 1, device=self.device)
+        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0)
+
+        for i, c in enumerate(counts, start=1):
+            self._log_data(f"Episode_Info/targets_reached_{i}", c.item())
 
         # - Rewards -
         # Reward for progress towards the target
-        #progress_reward = (torch.exp((self._previous_dist_to_target - dist_to_target) / 2) - 1) * 30 \
+        #progress_reward = (torch.exp((self._previous_target_distance - self._target_distance) / 2) - 1) * 30 \
         #    * ((self._targets_reached*0.5)+1)
-        difference = self._previous_dist_to_target - dist_to_target
-        progress_reward = torch.sign(difference) * torch.square(difference) * 10
-        progress_reward = (difference)
+        difference = self._previous_target_distance - self._target_distance
+        #progress_reward = torch.sign(difference) * torch.square(difference) * 10
+        progress_reward = difference
         progress_reward *= ((self._targets_reached * 0.5) + 1)
+        
         #torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Multipliy progress reward by distance to target (closer = more reward)
-        #progress_reward *= (5 / torch.maximum(dist_to_target, torch.tensor(1, device=self.device)))
+        #progress_reward *= (5 / torch.maximum(self._target_distance, torch.tensor(1, device=self.device)))
         
-        #progress_reward = torch.exp(-dist_to_target / 2.0) * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
+        #progress_reward = torch.exp(-self._target_distance / 2.0) * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Velocity alignment the target
-        unit_vector_to_target = relative_pos / (dist_to_target.unsqueeze(1) + 1e-6)
-        velocity_alignment_reward = torch.nn.functional.cosine_similarity(
-            self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
-        )
+        #unit_vector_to_target = relative_pos / (self._target_distance.unsqueeze(1) + 1e-6)
+        #velocity_alignment_reward = torch.nn.functional.cosine_similarity(
+        #    self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
+        #)
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
-        hit_target = self._targets_reached > 0
-        multiplier = torch.minimum(1 + self._targets_reached, torch.tensor(3.5, device=self.device))
-        hit_and_positive = hit_target & (velocity_alignment_reward > 0)
-        velocity_alignment_reward[hit_and_positive] *= multiplier[hit_and_positive]
-        hit_and_negative = hit_target & (velocity_alignment_reward < 0)
-        velocity_alignment_reward[hit_and_negative] /= multiplier[hit_and_negative] * 2.0
+        #hit_target = self._targets_reached > 0
+        #multiplier = torch.minimum(1 + self._targets_reached, torch.tensor(3.5, device=self.device))
+        #hit_and_positive = hit_target & (velocity_alignment_reward > 0)
+        #velocity_alignment_reward[hit_and_positive] *= multiplier[hit_and_positive]
+        #hit_and_negative = hit_target & (velocity_alignment_reward < 0)
+        #velocity_alignment_reward[hit_and_negative] /= multiplier[hit_and_negative] * 2.0
         #print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
         #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
         # Bonus for getting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
         target_reward = torch.zeros(self.num_envs, device=self.device)
         target_reward[reached_target_ids] = 0.5 + self._targets_reached[reached_target_ids] * 0.5
+        
+        time_penalty = torch.ones(self.num_envs, device=self.device)
 
-        self._previous_dist_to_target[:] = dist_to_target.clone()
+        self._previous_target_distance= self._target_distance.clone()
         
 
         # Reward for just moving forward in the robot's frame (sqrt)
-        forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
-                           * torch.pow(torch.abs(self._robot.data.root_lin_vel_b[:, 0]), 1.0/2.0)
+        #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
+        #                   * torch.pow(torch.abs(self._robot.data.root_lin_vel_b[:, 0]), 1.0/2.0)
         #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
         #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
         #forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
@@ -256,7 +239,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # action rate
         action_rate = torch.sum(torch.square(self._actions - self._previous_actions), dim=1)
         # joint velocity
-        dof_vel = torch.sum(torch.square(self._robot.data.joint_vel), dim=1)
+        #dof_vel = torch.sum(torch.square(self._robot.data.joint_vel), dim=1)
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[:, self.feet_ids]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
@@ -274,15 +257,16 @@ class ChargeprojectEnv(DirectRLEnv):
             #"track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             #"track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
             "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
-            "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
+            "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
+            #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward * self.step_dt,
-            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
+            #"forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
-            "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
+            #"dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
@@ -303,25 +287,6 @@ class ChargeprojectEnv(DirectRLEnv):
         else:
             self.extras["log"][key] = data
 
-    def stepTest(self, action: torch.Tensor):
-        """Override the base step method to include custom logs."""
-        # 1. Perform the standard environment step by calling the parent method.
-        #    This will call your _get_observations, _get_rewards, _get_dones, etc.
-        #    and populate the self.extras["log"] dictionary internally.
-        return_val = super().step(action)
-
-        # 2. After the parent step, self.extras["log"] contains your new data.
-        #    Merge this data into the `info` dictionary that is returned to the skrl trainer.
-        if "log" in self.extras:
-            return_val[-1].update(self.extras["log"])
-            
-            # It's good practice to clear the log dict after it has been used
-            # to prevent old data from accidentally carrying over.
-            self.extras["log"].clear()
-
-        # 3. Return the updated info dictionary.
-        return return_val
-    
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         full_time_out = self.episode_length_buf >= self.max_episode_length - 1
 
@@ -376,6 +341,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
         
+        self._last_targets_reached[env_ids] = self._targets_reached[env_ids].clone()
+
         # Set Next target positions to be reset position
         self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
         self._move_next_targets(env_ids)
@@ -400,10 +367,8 @@ class ChargeprojectEnv(DirectRLEnv):
 
         num_resets = len(env_ids)
         
-        point_diff = self.cfg.point_max_distance - self.cfg.point_min_distance
         radius = self.cfg.point_max_distance
-        if point_diff > 0.01:
-            radius += (self.cfg.point_min_distance - self.cfg.point_max_distance) * torch.rand(num_resets, device=self.device)
+        radius += (self.cfg.point_min_distance - self.cfg.point_max_distance) * torch.rand(num_resets, device=self.device)
         angle = 2 * math.pi * torch.rand(num_resets, device=self.device)
         new_target_pos_xy = self._desired_pos[env_ids] + torch.stack([
             radius * torch.cos(angle),
@@ -413,9 +378,9 @@ class ChargeprojectEnv(DirectRLEnv):
         # Update current and next desired positions
         self._next_desired_pos[env_ids] = new_target_pos_xy
         
-        # set _previous_dist_to_target to initial distance to target
+        # set _previous_target_distance to initial distance to target
         relative_pos = self._desired_pos[env_ids] - self._robot.data.root_pos_w[env_ids, :2]
-        self._previous_dist_to_target[env_ids] = torch.linalg.norm(relative_pos, dim=1)
+        self._previous_target_distance[env_ids] = torch.linalg.norm(relative_pos, dim=1)
 
         self._time_since_target[env_ids] = 0.0
         self._targets_reached[env_ids] += 1
@@ -471,15 +436,14 @@ class ChargeprojectEnv(DirectRLEnv):
         yaw = torch.atan2(relative_target_pos[:, 1], relative_target_pos[:, 0])
         orientations = math_utils.quat_from_angle_axis(yaw, self._up_dir)
 
-        dist_to_target = torch.linalg.norm(relative_target_pos, dim=1)
         # Linearly interpolate scale from 0.15 down to 0 as the robot gets closer
         # Clamp between 0.0 and 1.0 to handle cases where the robot is farther than max_dist
         # The maximum distance should be `self.cfg.point_max_distance`
-        scale_factor = torch.clamp(dist_to_target / self.cfg.point_max_distance, 0.0, 1.0)
+        scale_factor = torch.clamp(self._target_distance / self.cfg.point_max_distance, 0.0, 1.0)
         # Base scale for the arrow's width and height
-        arrow_thickness_scale = 0.15 * scale_factor.unsqueeze(1)
+        arrow_thickness_scale = 0.15 * scale_factor.unsqueeze(1) + 0.05
         # Make the arrow's length (x-axis) a bit longer for better visibility, relative to thickness
-        scales = torch.cat([2 * arrow_thickness_scale, arrow_thickness_scale, arrow_thickness_scale], dim=1)
+        scales = torch.cat([2 * arrow_thickness_scale, arrow_thickness_scale, arrow_thickness_scale], dim=1).squeeze(-1)
 
         arrow_positions = self._robot.data.root_pos_w + torch.tensor([0.0, 0.0, 0.5], device=self.device)
 
