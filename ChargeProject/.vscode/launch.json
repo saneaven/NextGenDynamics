@@ -42,18 +42,27 @@
             "name": "Python: Train Environment",
             "type": "python",
             "request": "launch",
-            "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "2000", "--video_length", "2000",
-                      // Speed forward
-                      // "--checkpoint", "checkpoints/runs_forward_fast.pt"
-                      // More turning
-                      //"--checkpoint", "checkpoints/forward_and_slight_target.pt"
-                      // Better turning
-                      //"--checkpoint", "checkpoints/decent_target.pt"
-                      // target tracking
-                      //"--checkpoint", "checkpoints/goes_between_targets.pt"
-                      // target tracking v1
-                      "--checkpoint", "checkpoints/point_to_point_v1.2.pt"
-                    ],
+            "args": [
+                "--task",
+                "Chargeproject-Direct-v0",
+                "--headless",
+                "--video",
+                "--video_interval",
+                "2000",
+                "--video_length",
+                "2000",
+                // Speed forward
+                // "--checkpoint", "checkpoints/runs_forward_fast.pt"
+                // More turning
+                //"--checkpoint", "checkpoints/forward_and_slight_target.pt"
+                // Better turning
+                //"--checkpoint", "checkpoints/decent_target.pt"
+                // target tracking
+                //"--checkpoint", "checkpoints/goes_between_targets.pt"
+                // target tracking v1
+                "--checkpoint",
+                "checkpoints/point_to_point_v1.2.pt"
+            ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
@@ -62,7 +71,12 @@
             "name": "Python: Play Environment",
             "type": "python",
             "request": "launch",
-            "args" : ["--task", "Chargeproject-Direct-v0", "--num_envs", "8"],
+            "args": [
+                "--task",
+                "Chargeproject-Direct-v0",
+                "--num_envs",
+                "8"
+            ],
             "program": "${workspaceFolder}/scripts/rsl_rl/play.py",
             "console": "integratedTerminal"
         },
@@ -72,7 +86,7 @@
             "request": "launch",
             "module": "pytest",
             "args": [
-              "${file}"
+                "${file}"
             ],
             "console": "integratedTerminal"
         },
@@ -81,7 +95,9 @@
             "type": "python",
             "request": "launch",
             "module": "pytest",
-            "args": ["source/isaaclab/test"],
+            "args": [
+                "source/isaaclab/test"
+            ],
             "console": "integratedTerminal",
             "justMyCode": false
         },

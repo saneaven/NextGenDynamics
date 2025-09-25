@@ -1,19 +1,18 @@
-
 {
-    "editor.rulers": [120],
-
+    "editor.rulers": [
+        120
+    ],
     // Enables python language server (seems to work slightly better than jedi)
     "python.languageServer": "Pylance",
     "python.jediEnabled": false,
-
     // Those paths are automatically filled by isaacsim (see: 'python -m isaacsim --help')
     "python.defaultInterpreterPath": "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\python.exe",
     "python.analysis.extraPaths": [
-        "C:\\Users\\maxro\\IsaacLab\\source\\isaaclab",
-        "C:\\Users\\maxro\\IsaacLab\\source\\isaaclab_assets",
-        "C:\\Users\\maxro\\IsaacLab\\source\\isaaclab_mimic",
-        "C:\\Users\\maxro\\IsaacLab\\source\\isaaclab_rl",
-        "C:\\Users\\maxro\\IsaacLab\\source\\isaaclab_tasks",
+        "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab",
+        "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab_assets",
+        "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab_mimic",
+        "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab_rl",
+        "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab_tasks",
         /*"C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\omni\\kernel\\py",
         "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\omni\\extscore\\omni.client.lib",
         "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\omni\\extscore\\omni.kit.async_engine",
@@ -630,15 +629,13 @@
         "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\isaacsim\\extsDeprecated\\omni.replicator.isaac",
         "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\Lib\\site-packages\\isaacsim\\extsDeprecated\\omni.usd.schema.isaac",*/
     ],
-
     // Use "black" as a formatter
     "python.formatting.provider": "black",
     "python.formatting.blackArgs": [
-      "--line-length",
-      "120"
+        "--line-length",
+        "120"
     ],
     "editor.tabSize": 4,
-
     // Use "flake8" for linting
     //"python.linting.pylintEnabled": false,
     //"python.linting.flake8Enabled": true,
