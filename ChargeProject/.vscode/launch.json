@@ -42,7 +42,7 @@
             "name": "Python: Train Environment",
             "type": "python",
             "request": "launch",
-            "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "2000", "--video_length", "2000",
+            "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "1000", "--video_length", "1000",
                       // Speed forward
                       // "--checkpoint", "checkpoints/runs_forward_fast.pt"
                       // More turning
@@ -52,7 +52,8 @@
                       // target tracking
                       //"--checkpoint", "checkpoints/goes_between_targets.pt"
                       // target tracking v1
-                      "--checkpoint", "checkpoints/point_to_point_v1.2.pt"
+                      //"--checkpoint", "checkpoints/point_to_point_v1.2.pt"
+                      "--checkpoint", "checkpoints/taps_forward_v2.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
