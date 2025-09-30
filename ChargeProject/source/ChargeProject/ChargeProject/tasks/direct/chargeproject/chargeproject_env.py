@@ -173,7 +173,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Counts for thresholds 1 through 8 in one go
         thresholds = torch.arange(1, 30, 3, device=self.device)
-        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0)
+        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0) / self.num_envs
 
         for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
             self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
@@ -284,7 +284,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
         for key, value in rewards.items():
             episodic_sum_avg = torch.mean(value).item()
-            self._log_data(f"Episode_Reward/rewards/{key}", episodic_sum_avg)
+            self._log_data(f"Episode_Reward/{key}", episodic_sum_avg)
 
         return reward
 
@@ -310,9 +310,9 @@ class ChargeprojectEnv(DirectRLEnv):
         #terminate = died | timed_out
         
         # Logging
-        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item())
-        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item())
-        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item())
+        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item() / self.num_envs)
+        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item() / self.num_envs)
+        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item() / self.num_envs)
 
 
         return self.died, timed_out | full_time_out
@@ -328,7 +328,6 @@ class ChargeprojectEnv(DirectRLEnv):
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
             self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
-            self._time_since_target[:] = torch.rand(self.num_envs, device=self.device) * self.cfg.time_out_per_target
 
         # Reset actions
         self._actions[env_ids] = 0.0
@@ -352,8 +351,11 @@ class ChargeprojectEnv(DirectRLEnv):
         self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
         self._move_next_targets(env_ids)
         self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
+        if len(env_ids) == self.num_envs:
+            # For initial randomize the initial timeout
+            self._time_since_target[:] = -self.cfg.time_out_per_target + torch.rand(self.num_envs, device=self.device) * self.cfg.time_out_per_target
 
-        self._time_outs[env_ids] = self.cfg.time_out_per_target + torch.rand(len(env_ids), device=self.device) * self.cfg.first_time_out_extra
+        self._time_outs[env_ids] = self.cfg.time_out_per_target
         self._targets_reached[env_ids] = 0
 
     def _reached_target(self, env_ids):

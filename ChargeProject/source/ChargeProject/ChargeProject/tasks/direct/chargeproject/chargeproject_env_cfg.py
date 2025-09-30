@@ -64,10 +64,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
     success_tolerance = 0.25 #1  # meters
-    time_out_per_target = 16.0  # seconds
-    first_time_out_extra = -2.0  # seconds, between 0 and this
-    time_out_decrease_per_target = 0.1  # seconds
-    max_targets_log = 8
+    time_out_per_target = 5.0  # seconds
+    time_out_decrease_per_target = 0.075  # seconds
 
     marker_colors = 57
     
@@ -146,12 +144,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.2
     
-    progress_reward_scale = 50
+    progress_reward_scale = 50/2.5
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 0
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 500
-    forward_vel_reward_scale = 1.2 # 1.2 # 0
+    reach_target_reward_scale = 500/5
+    forward_vel_reward_scale = 1.2/20 # 1.2 # 0
     time_penalty_scale = 0 #-5
     death_penalty_scale = -500
     #lin_vel_reward_scale = 1.5
@@ -159,10 +157,10 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     z_vel_reward_scale = -2
     ang_vel_reward_scale = -0.0375
     joint_torque_reward_scale = -5e-05
-    joint_accel_reward_scale = -1.5e-7 * 5
+    joint_accel_reward_scale = -1.5e-7
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003 * 3
     feet_air_time_reward_scale = 1.5
-    undesired_contact_reward_scale = -0.75
-    flat_orientation_reward_scale = -1
+    undesired_contact_reward_scale = -0.75*3
+    flat_orientation_reward_scale = -1*5
 
