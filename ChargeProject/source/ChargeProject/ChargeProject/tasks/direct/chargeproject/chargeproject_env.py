@@ -227,6 +227,14 @@ class ChargeprojectEnv(DirectRLEnv):
         #forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
         #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
         forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
+        
+        # Penalty for staying still (low horizontal velocity/rotating in the robot's frame)
+        horizontal_speed = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
+        yaw_speed = torch.abs(self._robot.data.root_ang_vel_b[:, 2])
+        # Combine linear and angular speed. The 0.25 factor balances their contributions.
+        motion_metric = horizontal_speed + 0.25 * yaw_speed
+        still_penalty = torch.exp(-2.0 * motion_metric)
+
 
         # linear velocity tracking
         #lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -267,7 +275,8 @@ class ChargeprojectEnv(DirectRLEnv):
             #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
-            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
+            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
+            "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,

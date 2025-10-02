@@ -144,14 +144,15 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.2
     
-    progress_reward_scale = 50/2.5
+    progress_reward_scale = 50/7.5
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 0
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 500/5
-    forward_vel_reward_scale = 1.2/20 # 1.2 # 0
+    reach_target_reward_scale = 500/15
+    forward_vel_reward_scale = 1.2/30 # 1.2 # 0
     time_penalty_scale = 0 #-5
     death_penalty_scale = -500
+    still_penalty_scale = -5
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -2
