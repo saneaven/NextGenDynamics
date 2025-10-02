@@ -18,20 +18,33 @@ models:
     max_log_std: 2.0
     initial_log_std: 0.0
     network:
-      - name: net
+      - name: rnn
         input: STATES
-        #layers: [128, 128, 128]
-        layers: [512, 256, 128]
+        type: lstm
+        hidden_size: 512
+        num_layers: 1
+        sequence_length: 128
+        layers: []
+      - name: net
+        input: rnn
+        #layers: [512, 256, 128]
+        layers: [256, 128]
         activations: elu
     output: ACTIONS
   value:  # see deterministic_model parameters
     class: DeterministicMixin
     clip_actions: False
     network:
-      - name: net
+      - name: rnn
         input: STATES
-        #layers: [128, 128, 128]
-        layers: [512, 256, 128]
+        type: lstm
+        hidden_size: 512
+        num_layers: 1
+        sequence_length: 128
+        layers: []
+      - name: net
+        input: rnn
+        layers: [256, 128]
         activations: elu
     output: ONE
 
@@ -48,6 +61,8 @@ memory:
 agent:
   class: PPO
   rollouts: 256 #256 # 24
+  sequence_length: 128 # 64
+  recurrent: True
   learning_epochs: 5
   mini_batches: 4 # 16 # 4
   discount_factor: 0.99
