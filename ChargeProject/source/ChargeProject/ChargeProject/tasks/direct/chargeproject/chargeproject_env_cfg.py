@@ -3,16 +3,22 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots.anymal import ANYMAL_C_CFG  # isort: skip
-from isaaclab_assets.robots.spot import SPOT_CFG
+from requests import patch
+from sympy import prime
+from trimesh import Trimesh
+from isaaclab_assets.robots.anymal import ANYMAL_C_CFG  # noqa isort: skip
+from isaaclab_assets.robots.spot import SPOT_CFG  # noqa
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
+
+from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg, ROBOT_CFG
 
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
-from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg
+from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
+
 
 
 @configclass
@@ -21,46 +27,48 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 60.0
     # - spaces definition
     action_space = 12
-    #observation_space = 48
-    observation_space = 51 
+    # observation_space = 48
+    observation_space = 51
     state_space = 0
     # simulation
     decimation = 2
     sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
     # robot(s)
-    robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    #robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    
+    robot = ROBOT_CFG
+    # robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+
     # Unitree Go2
     base_name = "base"
     foot_names = ".*_foot"
     undesired_contact_body_names = ".*_thigh"
 
     # Spot
-    #base_name = "body"
-    #foot_names = ".*_foot"
-    #undesired_contact_body_names = ".*_uleg"
+    # base_name = "body"
+    # foot_names = ".*_foot"
+    # undesired_contact_body_names = ".*_uleg"
 
     # Anymal
-    #base_name = "base"
-    #foot_names = ".*FOOT"
-    #undesired_contact_body_names = ".*THIGH"
+    # base_name = "base"
+    # foot_names = ".*FOOT"
+    # undesired_contact_body_names = ".*THIGH"
 
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
+        prim_path="/World/envs/env_.*/Robot/.*",
+        history_length=3,
+        update_period=0.005,
+        track_air_time=True,
     )
+
     height_scanner = RayCasterCfg(
         prim_path="/World/envs/env_.*/Robot/base",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),  # type: ignore
         debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
+        mesh_prim_paths=["/World/terrain"],
     )
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=1024, env_spacing=4.0, replicate_physics=True)
-
-
+    scene: InteractiveSceneCfg = MySceneCfg()
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
     success_tolerance = 0.25 #1  # meters
@@ -68,8 +76,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     time_out_decrease_per_target = 0.075  # seconds
 
     marker_colors = 57
-    
-    
+
     """ rewards for forward (with sqrt forward vel)
     Start with sqrt then move to linear
     action_scale = 0.2
@@ -92,8 +99,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_reward_scale = -0.75
     flat_orientation_reward_scale = -1
     """
-    
-    
 
     """ rewards for start of velocity alignment
     action_scale = 0.2
@@ -116,7 +121,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_reward_scale = -0.75
     flat_orientation_reward_scale = -1
     """
-    
+
     """ rewards for training point to point
     action_scale = 0.2
     
@@ -139,7 +144,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_reward_scale = -0.75
     flat_orientation_reward_scale = -1
     """
-    
 
     # Final rewards
     action_scale = 0.2
