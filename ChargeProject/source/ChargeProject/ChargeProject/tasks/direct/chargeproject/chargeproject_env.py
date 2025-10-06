@@ -207,7 +207,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Counts for thresholds 1 through 8 in one go
         thresholds = torch.arange(1, 30, 3, device=self.device)
-        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0)
+        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0) / self.num_envs
 
         for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
             self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
@@ -267,7 +267,15 @@ class ChargeprojectEnv(DirectRLEnv):
         #                   * torch.pow(torch.abs(self._robot.data.root_lin_vel_b[:, 0]), 1.0/2.0)
         # forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
         #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
-        # forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
+        forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
+        
+        # Penalty for staying still (low horizontal velocity/rotating in the robot's frame)
+        horizontal_speed = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
+        yaw_speed = torch.abs(self._robot.data.root_ang_vel_b[:, 2])
+        # Combine linear and angular speed. The 0.25 factor balances their contributions.
+        motion_metric = horizontal_speed + 0.25 * yaw_speed
+        still_penalty = torch.exp(-2.0 * motion_metric)
+
 
         # linear velocity tracking
         # lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -321,14 +329,11 @@ class ChargeprojectEnv(DirectRLEnv):
             * self.cfg.progress_reward_scale
             * self.step_dt,
             "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
-            # "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
-            "reach_target_reward": target_reward
-            * self.cfg.reach_target_reward_scale
-            * self.step_dt,
-            "death_penalty": death_penalty
-            * self.cfg.death_penalty_scale
-            * self.step_dt,
-            # "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt, # Added reward
+            #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
+            "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
+            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
+            "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error
             * self.cfg.ang_vel_reward_scale
@@ -359,7 +364,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
         for key, value in rewards.items():
             episodic_sum_avg = torch.mean(value).item()
-            self._log_data(f"Episode_Reward/rewards/{key}", episodic_sum_avg)
+            self._log_data(f"Episode_Reward/{key}", episodic_sum_avg)
 
         return reward
 
@@ -381,7 +386,12 @@ class ChargeprojectEnv(DirectRLEnv):
         self._time_since_target += self.step_dt
         timed_out = self._time_since_target > self._time_outs
         # change it so seperate gtime_outs
-        # terminate = died | timed_out
+        #terminate = died | timed_out
+        
+        # Logging
+        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item() / self.num_envs)
+        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item() / self.num_envs)
+        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item() / self.num_envs)
 
         # Logging
         self._log_data(
@@ -406,13 +416,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         if len(env_ids) == self.num_envs:
             # Spread out the resets to avoid spikes in training when many environments reset at a similar time
-            self.episode_length_buf[:] = torch.randint_like(
-                self.episode_length_buf, high=int(self.max_episode_length)
-            )
-            self._time_since_target[:] = (
-                torch.rand(self.num_envs, device=self.device)
-                * self.cfg.time_out_per_target
-            )
+            self.episode_length_buf[:] = torch.randint_like(self.episode_length_buf, high=int(self.max_episode_length))
 
         # Reset actions
         self._actions[env_ids] = 0.0
@@ -437,15 +441,12 @@ class ChargeprojectEnv(DirectRLEnv):
             env_ids, :2
         ].clone()
         self._move_next_targets(env_ids)
-        self._move_next_targets(
-            env_ids
-        )  # call twice to initialize both current and next target positions
+        self._move_next_targets(env_ids)  # call twice to initialize both current and next target positions
+        if len(env_ids) == self.num_envs:
+            # For initial randomize the initial timeout
+            self._time_since_target[:] = -self.cfg.time_out_per_target + torch.rand(self.num_envs, device=self.device) * self.cfg.time_out_per_target
 
-        self._time_outs[env_ids] = (
-            self.cfg.time_out_per_target
-            + torch.rand(len(env_ids), device=self.device)
-            * self.cfg.first_time_out_extra
-        )
+        self._time_outs[env_ids] = self.cfg.time_out_per_target
         self._targets_reached[env_ids] = 0
 
     def _reached_target(self, env_ids):
