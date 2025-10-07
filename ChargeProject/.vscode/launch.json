@@ -61,7 +61,7 @@
                 //"--checkpoint", "checkpoints/goes_between_targets.pt"
                 // target tracking v1
                 "--checkpoint",
-                "checkpoints/point_to_point_v1.2.pt"
+                "checkpoints/point_to_point_v2.3.pt"
             ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

@@ -6,7 +6,6 @@
     "python.languageServer": "Pylance",
     "python.jediEnabled": false,
     // Those paths are automatically filled by isaacsim (see: 'python -m isaacsim --help')
-    "python.defaultInterpreterPath": "C:\\ProgramData\\miniconda3\\envs\\env_isaaclab\\python.exe",
     "python.analysis.extraPaths": [
         "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab",
         "D:\\Utilities\\Isaac_Lab\\IsaacLab\\source\\isaaclab_assets",

@@ -11,7 +11,6 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor
-from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
@@ -105,8 +104,8 @@ class ChargeprojectEnv(DirectRLEnv):
         # add articulation to scene
         self.scene.articulations["robot"] = self._robot
         # add lights
-        light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
-        light_cfg.func("/World/Light", light_cfg)
+        # light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
+        # light_cfg.func("/World/Light", light_cfg)
 
         self._up_dir = torch.tensor([0.0, 0.0, 1.0], device=self.device)
 

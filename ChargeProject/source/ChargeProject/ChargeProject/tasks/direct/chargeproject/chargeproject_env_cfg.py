@@ -13,6 +13,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg
 from isaaclab.utils import configclass
+from .chargeproject_env_scene_cfg import TestSceneCfg
 
 
 @configclass
@@ -63,7 +64,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         mesh_prim_paths=["/World/ground"],
     )
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
+    scene: InteractiveSceneCfg = TestSceneCfg(
         num_envs=1024, env_spacing=4.0, replicate_physics=True
     )
 
