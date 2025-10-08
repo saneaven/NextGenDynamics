@@ -31,7 +31,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     action_space = 24
     #observation_space = 51
     #observation_space = 87 # without height scanner
-    observation_space = 274 # with height scanner
+    observation_space = 376 # with height scanner
     state_space = 0
     # simulation
     decimation = 2
@@ -72,7 +72,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         prim_path=f"/World/envs/env_.*/Robot/{base_name}",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),  # type: ignore
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.6]),  # type: ignore
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
