@@ -12,6 +12,7 @@ POLL_INTERVAL = 1
 # Window size for the moving average. Set to 1 to disable smoothing.
 SMOOTHING_WINDOW = 1
 #log_dir = "logs\\skrl\\quadre\\2025-09-23_10-04-10_ppo_torch_Load both next dist"
+base_log_dir = "logs/skrl/spiderbot"
 
 
 # Parses tfevents into a DataFrame
@@ -39,7 +40,6 @@ def parse_tfevents_to_dataframe(acc):
 
 # If log_dir is not set get the latest folder in logs/skrl/quadre
 if log_dir is None:
-    base_log_dir = "logs/skrl/quadre"
     all_runs = glob.glob(os.path.join(base_log_dir, "*"))
     log_dir = max(all_runs, key=os.path.getmtime)
     print(f"No log_dir specified. Using the latest run: {log_dir}")
@@ -128,3 +128,4 @@ finally:
     # plt.savefig("final_reward_plot.png", dpi=300)
     print("Final plot window is open. You can close it manually.")
     plt.show() # Show the final plot and block until closed
+    
