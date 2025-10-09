@@ -42,7 +42,7 @@
             "name": "Python: Train Environment",
             "type": "python",
             "request": "launch",
-            "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "10000", "--video_length", "2000",
+            "args" : ["--task", "Chargeproject-Direct-v0", "--headless", "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance"
                       // Speed forward
                       // "--checkpoint", "checkpoints/runs_forward_fast.pt"
                       // More turning

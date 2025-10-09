@@ -4,6 +4,10 @@ import isaaclab.sim as sim_utils
 from isaaclab.actuators import DCMotorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+from pathlib import Path
+
+FILE = Path(__file__).resolve() 
+SPIDER_PATH = FILE.parents[7] / "SpiderBot" / "spider" / "spider.usd"
 
 SPIDER_ACTUATOR_CFG = DCMotorCfg(
     joint_names_expr=[
@@ -21,7 +25,7 @@ SPIDER_ACTUATOR_CFG = DCMotorCfg(
 SPIDER_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         #usd_path=f"../../../SpiderBot/spider/spider.usd", not tested go down
-        usd_path=f"../SpiderBot/spider/spider.usd",
+        usd_path=f"{SPIDER_PATH}",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
