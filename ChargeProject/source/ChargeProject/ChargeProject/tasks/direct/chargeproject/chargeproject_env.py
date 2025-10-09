@@ -12,6 +12,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from .spider_robot import SPIDER_ACTUATOR_CFG
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
@@ -30,6 +31,8 @@ class ChargeprojectEnv(DirectRLEnv):
     ):
         super().__init__(cfg, render_mode, **kwargs)
 
+        self.dof_idx, _ = self._robot.find_joints(SPIDER_ACTUATOR_CFG.joint_names_expr)
+
         # Target positions
         self._desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
         self._next_desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
@@ -37,6 +40,16 @@ class ChargeprojectEnv(DirectRLEnv):
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
         self._life_time = torch.zeros(self.num_envs, device=self.device)
+
+        self._actions = torch.zeros(
+            (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
+            device=self.device,
+        )
+        self._previous_actions = torch.zeros(
+            self.num_envs,
+            gym.spaces.flatdim(self.single_action_space),
+            device=self.device,
+        )
 
         self._actions = torch.zeros(
             (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
@@ -88,6 +101,10 @@ class ChargeprojectEnv(DirectRLEnv):
         self.scene.articulations["robot"] = self._robot
         self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
         self.scene.sensors["contact_sensor"] = self._contact_sensor
+        
+        # we add a height scanner for perceptive locomotion
+        self._height_scanner = RayCaster(self.cfg.height_scanner)
+        self.scene.sensors["height_scanner"] = self._height_scanner
 
         self.goal_pos_visualizer = self._create_sphere_markers(
             self.cfg.marker_colors, 0.25, "/Visuals/Command/goal_position"
@@ -99,7 +116,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._lidar_sensor = RayCaster(self.cfg.lidar_sensor)
 
         # add ground plane
-        spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
+        # spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # we need to explicitly filter collisions for CPU simulation
@@ -116,14 +133,12 @@ class ChargeprojectEnv(DirectRLEnv):
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clone()
         self.processed_actions = (
-            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos
+            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
         )
         self._visualize_markers()
 
     def _apply_action(self) -> None:
-        self._robot.set_joint_position_target(
-            self.processed_actions
-        )  # , joint_ids=self.dof_idx)
+        self._robot.set_joint_position_target(self.processed_actions, joint_ids=self.dof_idx)
         # self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
 
     def _get_relative_target_info(
@@ -160,6 +175,11 @@ class ChargeprojectEnv(DirectRLEnv):
         lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
 
         self._target_distance = target_distance.squeeze(-1)
+
+        height_data = (
+            self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
+        ).clip(-1.0, 1.0)
+        
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
             [
@@ -174,9 +194,9 @@ class ChargeprojectEnv(DirectRLEnv):
                     next_target_unit_vector,
                     next_target_distance,
                     # self._commands,
-                    self._robot.data.joint_pos - self._robot.data.default_joint_pos,
-                    self._robot.data.joint_vel,
-                    # height_data,
+                    self._robot.data.joint_pos[:, self.dof_idx] - self._robot.data.default_joint_pos[:, self.dof_idx],
+                    self._robot.data.joint_vel[:, self.dof_idx],
+                    height_data,
                     self._actions,
                 )
                 if tensor is not None
@@ -189,9 +209,9 @@ class ChargeprojectEnv(DirectRLEnv):
 
     def _get_rewards(self) -> torch.Tensor:
         # Get robot and target positions (only x, y)
-        robot_pos = self._robot.data.root_pos_w[:, :2]
+        # robot_pos = self._robot.data.root_pos_w[:, :2]
         # Calculate distance
-        relative_pos = self._desired_pos - robot_pos
+        # relative_pos = self._desired_pos - robot_pos
 
         # Check if distance is within tolerance
         reached_target = self._target_distance < self.cfg.success_tolerance
@@ -235,10 +255,12 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # progress_reward = torch.exp(-self._target_distance / 2.0) * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Velocity alignment the target
+        robot_pos = self._robot.data.root_pos_w[:, :2]
+        relative_pos = self._desired_pos - robot_pos
         unit_vector_to_target = relative_pos / (self._target_distance.unsqueeze(1) + 1e-6)
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
            self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
-        ) ** 3
+        )
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
         # hit_target = self._targets_reached > 0
@@ -247,6 +269,8 @@ class ChargeprojectEnv(DirectRLEnv):
         # velocity_alignment_reward[hit_and_positive] *= multiplier[hit_and_positive]
         # hit_and_negative = hit_target & (velocity_alignment_reward < 0)
         # velocity_alignment_reward[hit_and_negative] /= multiplier[hit_and_negative] * 2.0
+        # print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
+        #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
         # Bonus for getting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
         target_reward = torch.zeros(self.num_envs, device=self.device)
@@ -259,13 +283,9 @@ class ChargeprojectEnv(DirectRLEnv):
         self._previous_target_distance = self._target_distance.clone()
 
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
-        self.died = torch.any(
-            torch.max(
-                torch.norm(net_contact_forces[:, :, self.base_id], dim=-1), dim=1
-            )[0]
-            > 1.0,
-            dim=1,
-        )
+
+        # died if gravity is near positive (flipped over)
+        self.died = self._robot.data.projected_gravity_b[:, 2] > 0.0
         death_penalty = self.died.float()
 
         # Reward for just moving forward in the robot's frame (sqrt)
@@ -342,29 +362,27 @@ class ChargeprojectEnv(DirectRLEnv):
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
             "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error
-            * self.cfg.ang_vel_penalty_scale
+            * self.cfg.ang_vel_reward_scale
             * self.step_dt,
             "dof_torques_l2": joint_torques
-            * self.cfg.joint_torque_penalty_scale
+            * self.cfg.joint_torque_reward_scale
             * self.step_dt,
             "dof_acc_l2": joint_accel
-            * self.cfg.joint_accel_penalty_scale
+            * self.cfg.joint_accel_reward_scale
             * self.step_dt,
             "action_rate_l2": action_rate
-            * self.cfg.action_rate_penalty_scale
+            * self.cfg.action_rate_reward_scale
             * self.step_dt,
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "feet_air_time": air_time
             * self.cfg.feet_air_time_reward_scale
             * self.step_dt,
             "undesired_contacts": contacts
-            * self.cfg.undesired_contact_penalty_scale
+            * self.cfg.undesired_contact_reward_scale
             * self.step_dt,
-            "flat_orientation_l2": flat_orientation
-            * self.cfg.flat_orientation_reward_scale
-            * self.step_dt,
+            "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
@@ -385,31 +403,16 @@ class ChargeprojectEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]:
         full_time_out = self.episode_length_buf >= self.max_episode_length - 1
 
-        # Terminate if body is below certain height
-        # body_height = self._robot.data.body_pos_w[:, self.body_id, 2]
-        # died = body_height < 0.2
-
-        # died if gravity is positive (flipped over)
-        # died = self._robot.data.projected_gravity_b[:, 2] > 0.0
-        self._time_since_target += self.step_dt
         self._life_time += self.step_dt
+        self._time_since_target += self.step_dt
         timed_out = self._time_since_target > self._time_outs
         # change it so seperate gtime_outs
-        # terminate = died | timed_out
-
-        # Logging
-        self._log_data(
-            "Episode_Termination/full_time_out",
-            torch.count_nonzero(full_time_out).item() / self.num_envs,
-        )
-        self._log_data(
-            "Episode_Termination/time_out",
-            torch.count_nonzero(timed_out).item() / self.num_envs,
-        )
-        self._log_data(
-            "Episode_Termination/died",
-            torch.count_nonzero(self.died).item() / self.num_envs,
-        )
+        #terminate = died | timed_out
+        
+        # Logging deaths/time outs per second
+        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item() / self.step_dt / self.num_envs)
+        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item() / self.step_dt / self.num_envs)
+        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item() / self.step_dt / self.num_envs)
 
         return self.died, timed_out | full_time_out
 

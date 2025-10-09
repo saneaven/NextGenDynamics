@@ -3,6 +3,7 @@ from isaaclab.utils import configclass
 import isaaclab.terrains as terrain_gen
 import isaaclab.sim as sim_utils
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
+from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
 ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(4.0, 4.0),
