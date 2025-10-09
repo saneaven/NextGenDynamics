@@ -80,7 +80,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = MySceneCfg()
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
-    success_tolerance = 0.25 #1  # meters
+    success_tolerance = 1 # 0.25  # meters
     time_out_per_target = 15 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
 
