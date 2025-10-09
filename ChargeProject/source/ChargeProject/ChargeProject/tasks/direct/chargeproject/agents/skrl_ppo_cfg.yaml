@@ -22,13 +22,13 @@ models:
         input: STATES
         type: lstm
         hidden_size: 512
-        num_layers: 1
+        num_layers: 3
         sequence_length: 128
         layers: []
       - name: net
         input: rnn
-        #layers: [512, 256, 128]
-        layers: [256, 128]
+        layers: [512, 256, 128]
+        # layers: [512, 256, 256, 256, 128]
         activations: elu
     output: ACTIONS
   value:  # see deterministic_model parameters
@@ -39,12 +39,12 @@ models:
         input: STATES
         type: lstm
         hidden_size: 512
-        num_layers: 1
+        num_layers: 2
         sequence_length: 128
         layers: []
       - name: net
         input: rnn
-        layers: [256, 128]
+        layers: [512, 256, 128]
         activations: elu
     output: ONE
 

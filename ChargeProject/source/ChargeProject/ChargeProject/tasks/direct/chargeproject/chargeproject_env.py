@@ -10,7 +10,8 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
-from isaaclab.sensors import ContactSensor
+from isaaclab.sensors import ContactSensor, RayCaster
+from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
@@ -35,6 +36,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._time_since_target = torch.zeros(self.num_envs, device=self.device)
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
+        self._life_time = torch.zeros(self.num_envs, device=self.device)
 
         self._actions = torch.zeros(
             (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
@@ -93,6 +95,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self.identifier_visualizer = self._create_arrow_markers(
             self.cfg.marker_colors, "/Visuals/Command/identifier_arrow"
         )
+
+        self._lidar_sensor = RayCaster(self.cfg.lidar_sensor)
 
         # add ground plane
         spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
@@ -153,6 +157,8 @@ class ChargeprojectEnv(DirectRLEnv):
             self._next_desired_pos
         )
 
+        lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
+
         self._target_distance = target_distance.squeeze(-1)
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
@@ -164,6 +170,7 @@ class ChargeprojectEnv(DirectRLEnv):
                     self._robot.data.projected_gravity_b,
                     target_unit_vector,
                     target_distance,
+                    lidar_data,
                     next_target_unit_vector,
                     next_target_distance,
                     # self._commands,
@@ -228,16 +235,10 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # progress_reward = torch.exp(-self._target_distance / 2.0) * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Velocity alignment the target
-        unit_vector_to_target = relative_pos / (
-            self._target_distance.unsqueeze(1) + 1e-6
-        )
-        vector_similarity = torch.nn.functional.cosine_similarity(
-            self._robot.data.root_com_lin_vel_b[:, :2], unit_vector_to_target, dim=1
-        )
-        vector_similarity = (vector_similarity + 1) / 2
-        velocity_alignment_reward = (
-            vector_similarity * vector_similarity * vector_similarity
-        )
+        unit_vector_to_target = relative_pos / (self._target_distance.unsqueeze(1) + 1e-6)
+        velocity_alignment_reward = torch.nn.functional.cosine_similarity(
+           self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
+        ) ** 3
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
         # hit_target = self._targets_reached > 0
@@ -246,8 +247,6 @@ class ChargeprojectEnv(DirectRLEnv):
         # velocity_alignment_reward[hit_and_positive] *= multiplier[hit_and_positive]
         # hit_and_negative = hit_target & (velocity_alignment_reward < 0)
         # velocity_alignment_reward[hit_and_negative] /= multiplier[hit_and_negative] * 2.0
-        # print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
-        #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
         # Bonus for getting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
         target_reward = torch.zeros(self.num_envs, device=self.device)
@@ -336,39 +335,32 @@ class ChargeprojectEnv(DirectRLEnv):
             "progress_reward": progress_reward
             * self.cfg.progress_reward_scale
             * self.step_dt,
+            "life_time_reward": self._life_time * self.cfg.life_time_reward_scale * self.step_dt,
             "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
-            # "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
-            "reach_target_reward": target_reward
-            * self.cfg.reach_target_reward_scale
-            * self.step_dt,
-            "death_penalty": death_penalty
-            * self.cfg.death_penalty_scale
-            * self.step_dt,
-            "forward_vel": forward_vel_reward
-            * self.cfg.forward_vel_reward_scale
-            * self.step_dt,
-            "still_penalty": still_penalty
-            * self.cfg.still_penalty_scale
-            * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
+            "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
+            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
+            "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error
-            * self.cfg.ang_vel_reward_scale
+            * self.cfg.ang_vel_penalty_scale
             * self.step_dt,
             "dof_torques_l2": joint_torques
-            * self.cfg.joint_torque_reward_scale
+            * self.cfg.joint_torque_penalty_scale
             * self.step_dt,
             "dof_acc_l2": joint_accel
-            * self.cfg.joint_accel_reward_scale
+            * self.cfg.joint_accel_penalty_scale
             * self.step_dt,
             "action_rate_l2": action_rate
-            * self.cfg.action_rate_reward_scale
+            * self.cfg.action_rate_penalty_scale
             * self.step_dt,
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "feet_air_time": air_time
             * self.cfg.feet_air_time_reward_scale
             * self.step_dt,
             "undesired_contacts": contacts
-            * self.cfg.undesired_contact_reward_scale
+            * self.cfg.undesired_contact_penalty_scale
             * self.step_dt,
             "flat_orientation_l2": flat_orientation
             * self.cfg.flat_orientation_reward_scale
@@ -400,6 +392,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # died if gravity is positive (flipped over)
         # died = self._robot.data.projected_gravity_b[:, 2] > 0.0
         self._time_since_target += self.step_dt
+        self._life_time += self.step_dt
         timed_out = self._time_since_target > self._time_outs
         # change it so seperate gtime_outs
         # terminate = died | timed_out
@@ -468,6 +461,7 @@ class ChargeprojectEnv(DirectRLEnv):
             )
 
         self._time_outs[env_ids] = self.cfg.time_out_per_target
+        self._life_time[env_ids] = 0.0
         self._targets_reached[env_ids] = 0
 
     def _reached_target(self, env_ids):

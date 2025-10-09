@@ -1,7 +1,8 @@
 {
-    "editor.rulers": [
-        120
-    ],
+    "editor.rulers": [120],
+
+    "editor.formatOnSave": false,
+    
     // Enables python language server (seems to work slightly better than jedi)
     "python.languageServer": "Pylance",
     "python.jediEnabled": false,
