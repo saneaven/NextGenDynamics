@@ -11,7 +11,7 @@ log_dir = None
 POLL_INTERVAL = 1
 # Window size for the moving average. Set to 1 to disable smoothing.
 SMOOTHING_WINDOW = 1
-#log_dir = "logs\\skrl\\quadre\\2025-09-23_10-04-10_ppo_torch_Load both next dist"
+log_dir = "C:\\School\\NextGenDynamics\\ChargeProject\\logs\\skrl\\spiderbot\\2025-10-09_08-54-01_ppo_torch"
 base_log_dir = "logs/skrl/spiderbot"
 
 

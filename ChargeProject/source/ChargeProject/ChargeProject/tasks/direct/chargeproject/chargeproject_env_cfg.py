@@ -97,7 +97,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     forward_vel_reward_scale = 0#1.2#/30
     time_penalty_scale = 0 #-5
     death_penalty_scale = 50 # -500
-    still_penalty_scale = -5    * 2
+    still_penalty_scale = -5    * 4
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -30  * 4   / 6
@@ -106,6 +106,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003 * 3   * 3    * 1.5
-    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 3.5
-    undesired_contact_reward_scale = -0.75   * 2    * 1.5
+    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 4
+    undesired_contact_reward_scale = -0.75   * 2    * 2
     flat_orientation_reward_scale = -1*15  * 3
