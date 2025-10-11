@@ -3,7 +3,6 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import math
 from requests import patch
 from sympy import prime
 from trimesh import Trimesh
@@ -16,7 +15,7 @@ from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg, RO
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
-from isaaclab.sim import SimulationCfg, PhysxCfg
+from isaaclab.sim import SimulationCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
 from .spider_robot import SPIDER_CFG
@@ -40,9 +39,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     state_space = 0
     # simulation
     decimation = 2
-    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation,
-                                       )
-    #physx=PhysxCfg(gpu_max_rigid_patch_count=524288, gpu_found_lost_pairs_capacity=2097152)
+    sim: SimulationCfg = SimulationCfg(dt=1 / 120, render_interval=decimation)
     # robot(s)
     robot: ArticulationCfg = SPIDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     #robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -52,7 +49,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     base_name = "body"
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
-    lower_leg_names = "leg_lower_.*"
 
     # Unitree Go2
     #base_name = "base"
@@ -99,8 +95,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     action_scale = 0.15# 0.2
     
     #progress_reward_scale = 50  * 5 # linear version ish
-    progress_reward_scale = 50  * 5 * 10 # 1.5 version
-    progress_pow = 2
+    progress_reward_scale = 50  * 5 * 5 # 1.5 version
+    progress_pow = 1.5
     distance_lookback = 8
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 10   / 2.5#2#6
@@ -108,22 +104,18 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     reach_target_reward_scale = 500/15
     forward_vel_reward_scale = 0
     time_penalty_scale = 0
-    death_penalty_scale = 50 #-500
-    still_penalty_scale = -5    * 12
+    death_penalty_scale = -200
+    still_penalty_scale = -5    * 4
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -30  * 4   / 6
-    ang_vel_reward_scale = -0.0375 * 10    * 12
+    ang_vel_reward_scale = -0.0375 * 10    * 18
     joint_torque_reward_scale = -5e-05 * 50     / 2#   / 20
     joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003 * 3   * 3    * 1.5
-    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 4
+    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
     feet_air_time_target = 0.2
     feet_air_time_max = 0.2
-    undesired_contact_reward_scale = -0.75   * 2    * 2     * 3
+    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
     flat_orientation_reward_scale = -1*15  * 3
-    lower_leg_penalty_scale = -450
-    lower_leg_angle_threshold = math.radians(45.0)
-    lower_leg_local_axis = [0.0, 0.0, 1.0]
-
