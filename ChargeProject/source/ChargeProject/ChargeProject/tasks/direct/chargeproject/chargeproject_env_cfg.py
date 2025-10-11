@@ -121,6 +121,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_air_time_max = 0.2
     undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
     flat_orientation_reward_scale = -1*15  * 3
-    lower_leg_penalty_scale = 450
-    lower_leg_local_axis = (0, 0, -1)  # Assuming Z is up
+    lower_leg_penalty_scale = -450
+    lower_leg_local_axis = [0.0, 0.0, -1.0]  # Assuming Z is up
     lower_leg_angle_threshold = math.radians(30)  # 30 degrees
