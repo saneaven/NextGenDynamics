@@ -94,9 +94,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.15# 0.2
     
-    #progress_reward_scale = 50  * 5 # linear version ish
-    progress_reward_scale = 50  * 5 * 5 # 1.5 version
-    progress_pow = 1.5
+    progress_reward_scale = 50  * 5 # linear version ish
+    #progress_reward_scale = 50  * 5 * 5 # 1.5 version
+    progress_pow = 1
     distance_lookback = 8
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 10   / 2.5#2#6
