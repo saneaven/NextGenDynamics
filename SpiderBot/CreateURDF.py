@@ -18,7 +18,9 @@ upper_info = [-75, 75, 0, 12, 5.0] # default -35
 middle_info = [-90, 20, 0, 8, 6.0] # default 70
 lower_info = [-90, 45, 0, 4, 8.0] # default 55
 
-effort_mod = 0.5
+# EFFORT, VELOCITY, AND DAMPING DO NOTHING, CHANGE IN spider_robot.py
+# (idk if friction does anything either)
+effort_mod = 1
 velocity_mod = 1.0
 damping = 0.5
 friction = 0.01
@@ -30,10 +32,10 @@ leg_density = 1200.0
 foot_density = 1200.0
 
 # Turn first 3 limits to radians
-hip_info = list(np.radians(hip_info[0:3])) + hip_info[3:]
-upper_info = list(np.radians(upper_info[0:3])) + upper_info[3:]
-middle_info = list(np.radians(middle_info[0:3])) + middle_info[3:]
-lower_info = list(np.radians(lower_info[0:3])) + lower_info[3:]
+hip_info = list(np.radians(hip_info[0:3])) + [hip_info[3] * effort_mod, hip_info[4] * velocity_mod]
+upper_info = list(np.radians(upper_info[0:3])) + [upper_info[3] * effort_mod, upper_info[4] * velocity_mod]
+middle_info = list(np.radians(middle_info[0:3])) + [middle_info[3] * effort_mod, middle_info[4] * velocity_mod]
+lower_info = list(np.radians(lower_info[0:3])) + [lower_info[3] * effort_mod, lower_info[4] * velocity_mod]
 
 def write_inertial(f, length=None, size=None, radius=None, height=None, density=1000):
     if length is not None and size is not None:
