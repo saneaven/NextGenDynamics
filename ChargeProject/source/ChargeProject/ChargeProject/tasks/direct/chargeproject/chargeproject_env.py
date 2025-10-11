@@ -40,6 +40,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
 
+
         self._actions = torch.zeros(
             (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
             device=self.device,
@@ -64,8 +65,8 @@ class ChargeprojectEnv(DirectRLEnv):
         )
         self.body_id = self._robot.data.body_names.index(self.cfg.base_name)
 
-        self._target_distance = torch.zeros(self.num_envs, device=self.device)
-        self._previous_target_distance = torch.zeros(self.num_envs, device=self.device)
+        # Change to initialize with nulls
+        self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
 
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
@@ -124,9 +125,17 @@ class ChargeprojectEnv(DirectRLEnv):
         )
         self._visualize_markers()
 
+        index = self._sim_step_counter % self.cfg.distance_lookback
+        target_distance = self._get_target_distance(self._desired_pos)
+        self._distance_buffer[:, index] = target_distance
+
     def _apply_action(self) -> None:
         self._robot.set_joint_position_target(self.processed_actions, joint_ids=self.dof_idx)
         # self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
+
+    def _get_target_distance(self, target_pos_w: torch.Tensor) -> torch.Tensor:
+        relative_target_pos_w = target_pos_w - self._robot.data.root_pos_w[:, :2]
+        return torch.linalg.norm(relative_target_pos_w, dim=1, keepdim=True).squeeze(-1)
 
     def _get_relative_target_info(
         self, target_pos_w: torch.Tensor
@@ -158,8 +167,6 @@ class ChargeprojectEnv(DirectRLEnv):
         next_target_unit_vector, next_target_distance = self._get_relative_target_info(
             self._next_desired_pos
         )
-
-        self._target_distance = target_distance.squeeze(-1)
 
         height_data = (
             self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
@@ -198,7 +205,8 @@ class ChargeprojectEnv(DirectRLEnv):
         # relative_pos = self._desired_pos - robot_pos
 
         # Check if distance is within tolerance
-        reached_target = self._target_distance < self.cfg.success_tolerance
+        target_distance = self._get_target_distance(self._desired_pos)
+        reached_target = target_distance < self.cfg.success_tolerance
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
         # Generate a new target immediately for the environments that reached theirs
@@ -207,39 +215,48 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Add the amount of targets reached to log
         # Average and max
-        self._log_data(
-            "Episode_Info/targets_reached_avg",
-            self._last_targets_reached.float().mean().item(),
-        )
-        self._log_data(
-            "Episode_Info/targets_reached_max", self._last_targets_reached.max().item()
-        )
+        if self.cfg.log:
+            self._log_data(
+                "Episode_Info/targets_reached_avg",
+                self._last_targets_reached.float().mean().item(),
+            )
+            self._log_data(
+                "Episode_Info/targets_reached_max", self._last_targets_reached.max().item()
+            )
 
         # Counts for thresholds 1 through 8 in one go
-        thresholds = torch.arange(1, 30, 3, device=self.device)
-        counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0) / self.num_envs
+        if self.cfg.log:
+            thresholds = torch.arange(1, 30, 3, device=self.device)
+            counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(dim=0) / self.num_envs
 
-        for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
-            self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
+            for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
+                self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
 
         # - Rewards -
         # Reward for progress towards the target
-        # progress_reward = (torch.exp((self._previous_target_distance - self._target_distance) / 2) - 1) * 30 \
+        sum_valid = torch.nansum(self._distance_buffer, dim=1)
+        count_valid = torch.clamp(torch.sum(~torch.isnan(self._distance_buffer), dim=1), min=1.0)
+        previous_buffered_distance = sum_valid / count_valid
+        # progress_reward = (torch.exp((previous_buffered_distance - target_distance) / 2) - 1) * 30 \
         #    * ((self._targets_reached*0.5)+1)
-        difference = self._previous_target_distance - self._target_distance
-        # progress_reward = torch.sign(difference) * torch.square(difference) * 10
-        progress_reward = difference
+        difference = (previous_buffered_distance - target_distance) * (1 + 0.5 * (count_valid-1))
+        progress_reward = torch.sign(difference) * torch.pow(torch.abs(difference), self.cfg.progress_pow)
+        #progress_reward = difference
         progress_reward *= (self._targets_reached * 0.5) + 1
+        if self.cfg.log:
+            # Log values for the first environment to observe its behavior
+            self._log_data("Debug/target_distance", target_distance[0].item())
+            self._log_data("Debug/previous_buffered_distance", previous_buffered_distance[0].item())
+            self._log_data("Debug/difference", difference[0].item())
 
         # torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
         # Multipliy progress reward by distance to target (closer = more reward)
-        # progress_reward *= (5 / torch.maximum(self._target_distance, torch.tensor(1, device=self.device)))
-
-        # progress_reward = torch.exp(-self._target_distance / 2.0) * torch.exp(self._targets_reached / self.cfg.progress_target_divisor)
+        # progress_reward *= (5 / torch.maximum(target_distance, torch.tensor(1, device=self.device)))
+        
         # Velocity alignment the target
         robot_pos = self._robot.data.root_pos_w[:, :2]
         relative_pos = self._desired_pos - robot_pos
-        unit_vector_to_target = relative_pos / (self._target_distance.unsqueeze(1) + 1e-6)
+        unit_vector_to_target = relative_pos / (target_distance.unsqueeze(1) + 1e-6)
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
            self._robot.data.root_lin_vel_w[:, :2], unit_vector_to_target, dim=1
         )
@@ -254,15 +271,13 @@ class ChargeprojectEnv(DirectRLEnv):
         # print("--- vel:", self._robot.data.root_lin_vel_w[:, :2], "\nunit_vector_to_target:", unit_vector_to_target,
         #    "\nvelocity_alignment_reward", velocity_alignment_reward)
 
-        # Bonus for getting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
+        # Bonus for get_ting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
         target_reward = torch.zeros(self.num_envs, device=self.device)
         target_reward[reached_target_ids] = (
             0.5 + self._targets_reached[reached_target_ids] * 0.5
         )
 
         time_penalty = torch.ones(self.num_envs, device=self.device)
-
-        self._previous_target_distance = self._target_distance.clone()
 
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
 
@@ -312,7 +327,8 @@ class ChargeprojectEnv(DirectRLEnv):
             :, self.feet_ids
         ]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
-        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
+        air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
+        air_time = torch.clamp(air_time, max=self.cfg.feet_air_time_max)
         # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
@@ -333,9 +349,7 @@ class ChargeprojectEnv(DirectRLEnv):
         rewards = {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
-            "progress_reward": progress_reward
-            * self.cfg.progress_reward_scale
-            * self.step_dt,
+            "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
             "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
             "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
@@ -343,34 +357,23 @@ class ChargeprojectEnv(DirectRLEnv):
             "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
-            "ang_vel_xy_l2": ang_vel_error
-            * self.cfg.ang_vel_reward_scale
-            * self.step_dt,
-            "dof_torques_l2": joint_torques
-            * self.cfg.joint_torque_reward_scale
-            * self.step_dt,
-            "dof_acc_l2": joint_accel
-            * self.cfg.joint_accel_reward_scale
-            * self.step_dt,
-            "action_rate_l2": action_rate
-            * self.cfg.action_rate_reward_scale
-            * self.step_dt,
+            "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
+            "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
+            "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
+            "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
-            "feet_air_time": air_time
-            * self.cfg.feet_air_time_reward_scale
-            * self.step_dt,
-            "undesired_contacts": contacts
-            * self.cfg.undesired_contact_reward_scale
-            * self.step_dt,
+            "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
         # Logging
-        self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
-        for key, value in rewards.items():
-            episodic_sum_avg = torch.mean(value).item()
-            self._log_data(f"Episode_Reward/{key}", episodic_sum_avg)
+        if self.cfg.log:
+            self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
+            for key, value in rewards.items():
+                episodic_sum_avg = torch.mean(value).item()
+                self._log_data(f"Episode_Reward/{key}", episodic_sum_avg)
 
         return reward
 
@@ -389,9 +392,10 @@ class ChargeprojectEnv(DirectRLEnv):
         #terminate = died | timed_out
         
         # Logging deaths/time outs per second
-        self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item() / self.step_dt / self.num_envs)
-        self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item() / self.step_dt / self.num_envs)
-        self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item() / self.step_dt / self.num_envs)
+        if self.cfg.log:
+            self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out).item() / self.step_dt / self.num_envs)
+            self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out).item() / self.step_dt / self.num_envs)
+            self._log_data("Episode_Termination/died", torch.count_nonzero(self.died).item() / self.step_dt / self.num_envs)
 
         return self.died, timed_out | full_time_out
 
@@ -465,12 +469,15 @@ class ChargeprojectEnv(DirectRLEnv):
         # Update current and next desired positions
         self._next_desired_pos[env_ids] = new_target_pos_xy
 
-        # set _previous_target_distance to initial distance to target
-        relative_pos = (
-            self._desired_pos[env_ids] - self._robot.data.root_pos_w[env_ids, :2]
+        # set _distance_buffer to nan and add current distance as element
+        self._distance_buffer[env_ids] = torch.nan
+        index = self._sim_step_counter % self.cfg.distance_lookback
+        distance = torch.linalg.norm(
+            self._robot.data.root_pos_w[env_ids, :2] - self._desired_pos[env_ids], dim=1
         )
-        self._previous_target_distance[env_ids] = torch.linalg.norm(relative_pos, dim=1)
+        self._distance_buffer[env_ids, index] = distance
 
+        # Reset timer
         self._time_since_target[env_ids] = 0.0
         self._targets_reached[env_ids] += 1
         self._time_outs[env_ids] = (
@@ -545,8 +552,9 @@ class ChargeprojectEnv(DirectRLEnv):
         # Linearly interpolate scale from 0.15 down to 0 as the robot gets closer
         # Clamp between 0.0 and 1.0 to handle cases where the robot is farther than max_dist
         # The maximum distance should be `self.cfg.point_max_distance`
+        target_distance = torch.linalg.norm(relative_target_pos, dim=1)
         scale_factor = torch.clamp(
-            self._target_distance / self.cfg.point_max_distance, 0.0, 1.0
+            target_distance / self.cfg.point_max_distance, 0.0, 1.0
         )
         # Base scale for the arrow's width and height
         arrow_thickness_scale = 0.15 * scale_factor.unsqueeze(1) + 0.05

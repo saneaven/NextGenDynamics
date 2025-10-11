@@ -24,6 +24,10 @@ from .spider_robot import SPIDER_CFG
 
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
+
+    #always should be on
+    log = True
+
     # env
     episode_length_s = 60.0
     # - spaces definition
@@ -81,31 +85,37 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
     success_tolerance = 1 # 0.25  # meters
-    time_out_per_target = 15 #5.0  # seconds
+    time_out_per_target = 25 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
+
 
     marker_colors = 57
 
     # Final rewards
     action_scale = 0.15# 0.2
     
-    progress_reward_scale = 50  * 5   * 25#/7.5
+    #progress_reward_scale = 50  * 5 # linear version ish
+    progress_reward_scale = 50  * 5 * 5 # 1.5 version
+    progress_pow = 1.5
+    distance_lookback = 8
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 10   / 2.5#2#6
     # Multiplied by targets hit reward
     reach_target_reward_scale = 500/15
-    forward_vel_reward_scale = 0#1.2#/30
-    time_penalty_scale = 0 #-5
+    forward_vel_reward_scale = 0
+    time_penalty_scale = 0
     death_penalty_scale = 50 # -500
     still_penalty_scale = -5    * 4
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = -30  * 4   / 6
-    ang_vel_reward_scale = -0.0375 * 10
-    joint_torque_reward_scale = -5e-05 * 50   / 20
+    ang_vel_reward_scale = -0.0375 * 10    * 18
+    joint_torque_reward_scale = -5e-05 * 50     / 2#   / 20
     joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003 * 3   * 3    * 1.5
-    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 4
-    undesired_contact_reward_scale = -0.75   * 2    * 2
+    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
+    feet_air_time_target = 0.2
+    feet_air_time_max = 0.2
+    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
     flat_orientation_reward_scale = -1*15  * 3
