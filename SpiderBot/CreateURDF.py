@@ -18,7 +18,7 @@ upper_info = [-75, 75, 0, 12, 5.0] # default -35
 middle_info = [-90, 20, 0, 8, 6.0] # default 70
 lower_info = [-90, 45, 0, 4, 8.0] # default 55
 
-effort_mod = 1.0
+effort_mod = 0.5
 velocity_mod = 1.0
 damping = 0.5
 friction = 0.01
