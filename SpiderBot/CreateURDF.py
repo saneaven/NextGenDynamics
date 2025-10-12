@@ -12,18 +12,18 @@ lower_leg = 0.175
 foot_radius = np.sqrt(2 * body_height**2) / 2
 
 # Joint parameters 
-# min, max, offset, effort (N*m), velocity (rad/s)
-hip_info = [-55, 55, 0, 25, 4.0]
-upper_info = [-75, 75, 0, 12, 5.0] # default -35
-middle_info = [-90, 20, 0, 8, 6.0] # default 70
-lower_info = [-90, 45, 0, 4, 8.0] # default 55
+# min, max, offset, effort (N*m), velocity (rad/s), damping (N*m*s/rad), friction (N*m)
+hip_info = [-55, 55, 0, 12, 12.0, 0.2, 0.1]
+upper_info = [-75, 75, 0, 30, 15.0, 0.6, 0.3] # default angle -35
+middle_info = [-90, 20, 0, 22, 15.0, 0.4, 0.2] # default angle 70
+lower_info = [-90, 45, 0, 11, 15.0, 0.2, 0.1] # default angle 55
 
-# EFFORT, VELOCITY, AND DAMPING DO NOTHING, CHANGE IN spider_robot.py
+# EFFORT, VELOCITY CHANGE IN spider_robot.py
 # (idk if friction does anything either)
 effort_mod = 1
-velocity_mod = 1.0
-damping = 0.5
-friction = 0.01
+velocity_mod = 1
+damping_mod = 1
+friction_mod = 1
 
 # Density in kg/m^3
 # PLA/plastic ~ 1200, Aluminum ~ 2700, Steel ~ 7850
@@ -32,10 +32,14 @@ leg_density = 1200.0
 foot_density = 1200.0
 
 # Turn first 3 limits to radians
-hip_info = list(np.radians(hip_info[0:3])) + [hip_info[3] * effort_mod, hip_info[4] * velocity_mod]
-upper_info = list(np.radians(upper_info[0:3])) + [upper_info[3] * effort_mod, upper_info[4] * velocity_mod]
-middle_info = list(np.radians(middle_info[0:3])) + [middle_info[3] * effort_mod, middle_info[4] * velocity_mod]
-lower_info = list(np.radians(lower_info[0:3])) + [lower_info[3] * effort_mod, lower_info[4] * velocity_mod]
+hip_info = list(np.radians(hip_info[0:3])) + \
+  [hip_info[3] * effort_mod, hip_info[4] * velocity_mod, hip_info[5] * damping_mod, hip_info[6] * friction_mod]
+upper_info = list(np.radians(upper_info[0:3])) + \
+  [upper_info[3] * effort_mod, upper_info[4] * velocity_mod, upper_info[5] * damping_mod, upper_info[6] * friction_mod]
+middle_info = list(np.radians(middle_info[0:3])) + \
+  [middle_info[3] * effort_mod, middle_info[4] * velocity_mod, middle_info[5] * damping_mod, middle_info[6] * friction_mod]
+lower_info = list(np.radians(lower_info[0:3])) + \
+  [lower_info[3] * effort_mod, lower_info[4] * velocity_mod, lower_info[5] * damping_mod, lower_info[6] * friction_mod]
 
 def write_inertial(f, length=None, size=None, radius=None, height=None, density=1000):
     if length is not None and size is not None:
@@ -102,7 +106,7 @@ def write_leg(f, parent, child, i, parent_length, length, joint_info, axis="0 -1
     f.write(f'    <origin xyz="{x} {y} {z}" rpy="0 0 {angle}"/>\n')
     f.write(f'    <axis xyz="{axis}"/>\n')
     f.write(f'    <limit lower="{joint_info[0]}" upper="{joint_info[1]}" effort="{joint_info[3]}" velocity="{joint_info[4]}"/>\n')
-    f.write(f'    <dynamics damping="{damping}" friction="{friction}"/>\n')
+    f.write(f'    <dynamics damping="{joint_info[5]}" friction="{joint_info[6]}"/>\n')
     f.write('  </joint>\n')
     
 def write_foot(f, parent, child, i, parent_length, radius):

@@ -1,22 +1,46 @@
 
 import math
+
+import torch
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import DCMotorCfg
+from isaaclab.actuators import DCMotorCfg, ImplicitActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
-SPIDER_ACTUATOR_CFG = DCMotorCfg(
+SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     joint_names_expr=[
         "joint_body_leg_hip_.*",
         "joint_leg_hip_leg_upper_.*",
         "joint_leg_upper_leg_middle_.*",
-        "joint_leg_middle_leg_lower_.*",],  # All but lower to foot
-    saturation_effort=10.0,
-    effort_limit=5.0,
-    velocity_limit=10.0,
-    stiffness={".*": 30.0},
-    damping={".*": 1.0},
+        "joint_leg_middle_leg_lower_.*",
+    ],
+    effort_limit={
+        "joint_body_leg_hip_.*": 12.0,
+        "joint_leg_hip_leg_upper_.*": 30.0,
+        "joint_leg_upper_leg_middle_.*": 22.0,
+        "joint_leg_middle_leg_lower_.*": 11.0,
+    },
+    velocity_limit={
+        "joint_body_leg_hip_.*": 15.0,
+        "joint_leg_hip_leg_upper_.*": 15.0,
+        "joint_leg_upper_leg_middle_.*": 15.0,
+        "joint_leg_middle_leg_lower_.*": 15.0,
+    },
+    stiffness={
+        "joint_body_leg_hip_.*": 12.0,
+        "joint_leg_hip_leg_upper_.*": 30.0,
+        "joint_leg_upper_leg_middle_.*": 22.0,
+        "joint_leg_middle_leg_lower_.*": 11.0,
+    },
+    damping={
+        "joint_body_leg_hip_.*": 0.2,
+        "joint_leg_hip_leg_upper_.*": 0.6,
+        "joint_leg_upper_leg_middle_.*": 0.4,
+        "joint_leg_middle_leg_lower_.*": 0.2,
+    },
+    armature = 0.001,
 )
+
 
 SPIDER_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
