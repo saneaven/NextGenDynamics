@@ -140,18 +140,6 @@ class ChargeprojectEnv(DirectRLEnv):
         self.processed_actions = (
             self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
         )
-
-        if self._sim_step_counter % 1000 < 500:
-            # override actions so every joint is at default position
-            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
-        else:
-            # set joints to 0
-            self.processed_actions = torch.zeros_like(
-                self._robot.data.default_joint_pos[:, self.dof_idx]
-            )
-
-
-
         self._robot.set_joint_position_target(self.processed_actions, joint_ids=self.dof_idx)
         # self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
     
