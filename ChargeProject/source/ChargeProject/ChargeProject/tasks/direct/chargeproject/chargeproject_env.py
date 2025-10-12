@@ -339,7 +339,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Calculate how much the angle is below the threshold.
         # We use relu so that there's no penalty if the angle is above the threshold.
-        angle_violation = torch.nn.functional.relu(self.cfg.lower_leg_angle_threshold - angles_rad)
+        angle_violation = torch.nn.functional.relu(angles_rad - self.cfg.lower_leg_angle_threshold)
 
         # The final penalty is the sum of the squared violations for all legs in each environment.
         # Squaring the violation penalizes larger deviations more heavily.

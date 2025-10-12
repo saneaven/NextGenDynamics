@@ -47,7 +47,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
-            
+            #gpu_collision_stack_size = 2**27,
+            #gpu_max_rigid_patch_count = 2**19
         )
     )
     # robot(s)
@@ -152,6 +153,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_air_time_max = 0.2
     undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
     flat_orientation_reward_scale = -1*15  * 3
-    lower_leg_penalty_scale = -450 * 4 * 2
+    lower_leg_penalty_scale = -450 * 4 * 2 / 100 / 100
     lower_leg_local_axis = [0.0, 0.0, 1.0]  # Assuming Z is up
-    lower_leg_angle_threshold = math.radians(15)
+    lower_leg_angle_threshold = math.radians(30)
