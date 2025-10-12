@@ -69,14 +69,6 @@ class ChargeprojectEnv(DirectRLEnv):
         self.body_id = self._robot.data.body_names.index(self.cfg.base_name)
         self.lower_leg_ids, _ = self._robot.find_bodies(self.cfg.lower_leg_names)
 
-        lower_leg_local_axis_vec = torch.tensor(
-            self.cfg.lower_leg_local_axis, device=self.device
-        )
-        num_legs = len(self.lower_leg_ids)
-        target_shape = (self.num_envs, num_legs, 3)
-        # Create and store the expanded tensor as a class attribute for efficiency.
-        self.lower_leg_local_axis = lower_leg_local_axis_vec.expand(target_shape)
-
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
 
@@ -135,9 +127,6 @@ class ChargeprojectEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clone()
-        self.processed_actions = (
-            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
-        )
         target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w[:, :2], dim=1)
 
         if self.cfg.cameras:
@@ -148,6 +137,21 @@ class ChargeprojectEnv(DirectRLEnv):
         self._distance_buffer[:, index] = target_distance.squeeze(-1)
 
     def _apply_action(self) -> None:
+        self.processed_actions = (
+            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
+        )
+
+        if self._sim_step_counter % 1000 < 500:
+            # override actions so every joint is at default position
+            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
+        else:
+            # set joints to 0
+            self.processed_actions = torch.zeros_like(
+                self._robot.data.default_joint_pos[:, self.dof_idx]
+            )
+
+
+
         self._robot.set_joint_position_target(self.processed_actions, joint_ids=self.dof_idx)
         # self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
     
@@ -172,7 +176,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         return unit_vector_b, distance
     
-    @torch.compile(mode="reduce-overhead")
+    #@torch.compile(mode="reduce-overhead")
     def _get_observations_impl(self, height_scanner_data) -> dict:
         height_data = (
             height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5
@@ -215,7 +219,7 @@ class ChargeprojectEnv(DirectRLEnv):
         observations = {"policy": observations.clone()}
         return observations
 
-    @torch.compile(mode="reduce-overhead")    
+   #@torch.compile(mode="reduce-overhead")    
     def _get_rewards_impl(self, reached_target_ids) -> torch.Tensor:
         target_unit_vector, target_distance = self._get_relative_target_info(self._desired_pos)
 
@@ -323,27 +327,20 @@ class ChargeprojectEnv(DirectRLEnv):
             torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1
         )
 
-        # Lower leg orientation penalty
-        # Get the orientation quaternions of the lower leg bodies in the world frame.
-        lower_leg_quats = self._robot.data.body_quat_w[:, self.lower_leg_ids]
+        # Get rotation matrices of lower leg links (in world frame)
+        #lower_leg_rot_mats = self._robot.data.body_link_quat_w[:, self.lower_leg_ids]  # shape [envs, legs, 4] (quaternions)
 
-        # Rotate the local z-axis of each leg into the world frame to find its current direction.
-        world_leg_z_axes = math_utils.quat_apply(lower_leg_quats, self.lower_leg_local_axis)
+        #w, x, y, z = lower_leg_rot_mats.unbind(dim=-1)
 
-        # Calculate the dot product between each leg's axis and the world's "up" vector.
-        # The result is the cosine of the angle between them.
-        dot_product = torch.sum(world_leg_z_axes * self._up_dir, dim=-1)
+        # z-axis of lower leg in world frame
+        #z_world_z = 1 - 2 * (x**2 + y**2)
 
-        # Compute the angle in radians. We clamp the dot_product to avoid numerical errors in acos.
-        angles_rad = torch.acos(torch.clamp(dot_product, -1.0, 1.0))
+        # Cosine between leg z-axis and world up ([0,0,1])
+        #cos_angle = z_world_z  # since world_up = [0, 0, 1]
 
-        # Calculate how much the angle is below the threshold.
-        # We use relu so that there's no penalty if the angle is above the threshold.
-        angle_violation = torch.nn.functional.relu(angles_rad - self.cfg.lower_leg_angle_threshold)
+        # Penalize deviation from upright
+        #lower_leg_penalty = torch.mean(torch.square(cos_angle), dim=1)
 
-        # The final penalty is the sum of the squared violations for all legs in each environment.
-        # Squaring the violation penalizes larger deviations more heavily.
-        lower_leg_angle_penalty = torch.sum(torch.square(angle_violation), dim=1)
 
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -364,7 +361,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
-            "lower_leg_penalty": lower_leg_angle_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
+            #"lower_leg_penalty": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
         }
 
 

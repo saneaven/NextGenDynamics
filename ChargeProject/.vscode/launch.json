@@ -43,11 +43,10 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "1000", "--video_length", "1000", // "--rendering_mode", "performance",
-                      "--checkpoint", "checkpoints/Spider/spiderbot_v0.13.pt"
+                      "--video", "--video_interval", "500", "--video_length", "500", // "--rendering_mode", "performance",
+                      "--checkpoint", "checkpoints/Spider/spiderbot_v0.14.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
-            //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
         },
         {

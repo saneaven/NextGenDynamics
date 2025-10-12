@@ -94,7 +94,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=256,#4096*2, 
+        num_envs=4096*3, 
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -157,6 +157,4 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_air_time_max = 0.2
     undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
     flat_orientation_reward_scale = -1*15  * 3
-    lower_leg_penalty_scale = -450 * 4 * 2 / 100 / 100
-    lower_leg_local_axis = [0.0, 0.0, 1.0]  # Assuming Z is up
-    lower_leg_angle_threshold = math.radians(30)
+    #lower_leg_penalty_scale = -450 * 4 * 2 / 10
