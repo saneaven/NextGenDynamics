@@ -236,12 +236,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         runner.agent.load(resume_path)
-
+    torch.cuda.profiler.start()
     # run training
     runner.run()
 
     # close the simulator
     env.close()
+
+    torch.cuda.profiler.stop()
+
 
 
 if __name__ == "__main__":

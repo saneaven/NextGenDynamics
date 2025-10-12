@@ -92,7 +92,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         mesh_prim_paths=["/World/ground"],
     )
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096*2, env_spacing=4.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096*3, env_spacing=4.0, replicate_physics=True)
 
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
