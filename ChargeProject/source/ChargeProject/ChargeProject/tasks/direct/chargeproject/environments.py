@@ -4,6 +4,8 @@ import isaaclab.terrains as terrain_gen
 import isaaclab.sim as sim_utils
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from isaaclab.assets import AssetBaseCfg
+from ChargeProject.tasks.direct.chargeproject.double_noise_env import HfTwoScaleNoiseCfg
 
 ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(4.0, 4.0),
@@ -68,27 +70,28 @@ ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerato
 
 
 SMOOTH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
-    size=(20.0, 20.0),
+    size=(64.0, 64.0),
     # border_width=10.0,
     num_rows=1,
     num_cols=1,
-    # horizontal_scale=0.1,
-    # vertical_scale=0.005,
-    # slope_threshold=0.5,
-    # use_cache=False,
     color_scheme="random",
+    vertical_scale=0.000003,
+    horizontal_scale=0.05,
     sub_terrains={
-        "random_uniform": terrain_gen.HfRandomUniformTerrainCfg(
+        "random_uniform": HfTwoScaleNoiseCfg(
             proportion=1.0,
-            noise_range=(-0.05, 0.05),
-            noise_step= 0.005,
-            downsampled_scale=0.3,
+            macro_noise_step=0.005,
+            macro_noise_range=(-0.3, 0.3),
+            macro_downsampled_scale=1.6,
+            micro_noise_step=0.000003,
+            micro_noise_range=(-0.2, 0.2),
+            micro_downsampled_scale=0.05,
             flat_patch_sampling={
                 "robot_spawn": terrain_gen.FlatPatchSamplingCfg(
-                    num_patches=10, patch_radius=1.0, max_height_diff=0.5
+                    num_patches=2048, patch_radius=1.0, max_height_diff=0.5
                 ),
             },
-            size=(100., 100.)
+            size=(128., 128.)
         ),
         # "plane": terrain_gen.MeshPlaneTerrainCfg(
         #     proportion=0.2,
@@ -112,7 +115,7 @@ ROBOT_CFG = UNITREE_GO2_CFG.replace(  # type: ignore
 
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
-    num_envs = 786
+    num_envs = 1024
     env_spacing = 4.0
     replicate_physics = True
 
@@ -129,4 +132,11 @@ class MySceneCfg(InteractiveSceneCfg):
         #     dynamic_friction=1.0,
         #     restitution=0.0,
         # ),
+    )
+    dome = AssetBaseCfg(
+        prim_path="/World/Lights/Dome",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=3000.0,
+            color=(0.8, 0.8, 0.8),
+        ),
     )

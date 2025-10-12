@@ -43,8 +43,21 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "1000", "--video_length", "1000", "--rendering_mode", "performance"
-],
+                      "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
+                      "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.1.pt"
+                    ],
+            "program": "${workspaceFolder}/scripts/skrl/train.py",
+            //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Train Environment (Debug)",
+            "type": "python",
+            "request": "launch",
+            "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
+                      "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
+                      "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.1.pt"
+                    ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
@@ -57,7 +70,8 @@
                 "--task",
                 "Chargeproject-Direct-v0",
                 "--num_envs",
-                "8"
+                "8",
+                "--checkpoint", "checkpoints/spider_mj_v0.1.pt"
             ],
             "program": "${workspaceFolder}/scripts/rsl_rl/play.py",
             "console": "integratedTerminal"

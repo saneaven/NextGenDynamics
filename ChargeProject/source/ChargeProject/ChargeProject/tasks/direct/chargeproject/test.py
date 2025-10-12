@@ -1,21 +1,15 @@
-import cv2
-import torch
+# Isaac Lab/Omniverse Kit 런타임 내 파이썬
+from pxr import Usd, Sdf
+import omni.usd
 
-from depth_anything_v2.dpt import DepthAnythingV2
+stage = omni.usd.get_context().get_stage()  # 현재 USD Stage 얻기
+world = stage.GetPrimAtPath(Sdf.Path("/World"))
+print("World valid?", world.IsValid())
 
-model_configs = {
-    'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]},
-    'vitb': {'encoder': 'vitb', 'features': 128, 'out_channels': [96, 192, 384, 768]},
-    'vitl': {'encoder': 'vitl', 'features': 256, 'out_channels': [256, 512, 1024, 1024]}
-}
+# /World 바로 아래 자식 프림들 찍기
+for child in world.GetChildren():
+    print("child:", child.GetPath())
 
-encoder = 'vitl' # or 'vits', 'vitb'
-dataset = 'hypersim' # 'hypersim' for indoor model, 'vkitti' for outdoor model
-max_depth = 20 # 20 for indoor model, 80 for outdoor model
-
-model = DepthAnythingV2(**{**model_configs[encoder], 'max_depth': max_depth})
-model.load_state_dict(torch.load(f'checkpoints/depth_anything_v2_metric_{dataset}_{encoder}.pth', map_location='cpu'))
-model.eval()
-
-raw_img = cv2.imread('your/image/path')
-depth = model.infer_image(raw_img) # HxW depth map in meters in numpy
+# 내가 찾는 경로가 실제로 유효한지 검사
+p = stage.GetPrimAtPath(Sdf.Path("/World/terrain"))
+print("/World/terrain valid?", p.IsValid())

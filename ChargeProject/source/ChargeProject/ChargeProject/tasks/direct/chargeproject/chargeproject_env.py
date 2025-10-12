@@ -141,6 +141,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.set_joint_position_target(self.processed_actions, joint_ids=self.dof_idx)
         # self.robot.set_joint_velocity_target(self.actions, joint_ids=self.dof_idx)
 
+
     def _get_relative_target_info(
         self, target_pos_w: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -161,6 +162,7 @@ class ChargeprojectEnv(DirectRLEnv):
         unit_vector_b = relative_target_pos_b_3d[:, :2] / (distance + 1e-6)
 
         return unit_vector_b, distance
+
 
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
@@ -221,24 +223,12 @@ class ChargeprojectEnv(DirectRLEnv):
         if len(reached_target_ids) > 0:
             self._move_next_targets(reached_target_ids)
 
-        # Add the amount of targets reached to log
-        # Average and max
-        self._log_data(
-            "Episode_Info/targets_reached_avg",
-            self._last_targets_reached.float().mean().item(),
-        )
-        self._log_data(
-            "Episode_Info/targets_reached_max", self._last_targets_reached.max().item()
-        )
 
         # Counts for thresholds 1 through 8 in one go
         thresholds = torch.arange(1, 30, 3, device=self.device)
         counts = (self._last_targets_reached.unsqueeze(-1) >= thresholds).sum(
             dim=0
         ) / self.num_envs
-
-        for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
-            self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
 
         # - Rewards -
         # Reward for progress towards the target
@@ -332,6 +322,14 @@ class ChargeprojectEnv(DirectRLEnv):
         ]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
         air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
+        # check jump (all feet in the air at the same time)
+        current_air_times = self._contact_sensor.data.current_air_time[:, self.feet_ids]
+        air_feet_per_agent = (current_air_times > 0).float().sum(dim=1)
+        # jump_penalty = (current_air_times > 0).all(dim=1).float()
+        normalized_air_feet = air_feet_per_agent / len(self.feet_ids)
+        normalized_air_feet[normalized_air_feet < 0.0000001] = 1.0  # If no feet on air, max penalty.
+        jump_penalty = normalized_air_feet * normalized_air_feet * normalized_air_feet
+
         # undesired contacts
         net_contact_forces = self._contact_sensor.data.net_forces_w_history
         is_contact = (
@@ -360,9 +358,11 @@ class ChargeprojectEnv(DirectRLEnv):
             "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
+            "jump_penalty": jump_penalty * self.cfg.jump_penalty_scale * self.step_dt,
             "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            "speed_reward": horizontal_speed * self.cfg.speed_reward_scale * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error
             * self.cfg.ang_vel_reward_scale
             * self.step_dt,
@@ -386,7 +386,19 @@ class ChargeprojectEnv(DirectRLEnv):
         }
         reward = torch.sum(torch.stack(list(rewards.values())), dim=0)
 
-        # Logging
+        # # Logging
+        
+        for _, (t, c) in enumerate(zip(thresholds, counts), start=1):
+            self._log_data(f"Episode_Info/targets_reached_{t.item()}", c.item())
+        # Add the amount of targets reached to log
+        # Average and max
+        self._log_data(
+            "Episode_Info/targets_reached_avg",
+            self._last_targets_reached.float().mean().item(),
+        )
+        self._log_data(
+            "Episode_Info/targets_reached_max", self._last_targets_reached.max().item()
+        )
         self._log_data("Episode_Reward/total_reward", torch.mean(reward).item())
         for key, value in rewards.items():
             episodic_sum_avg = torch.mean(value).item()
@@ -417,8 +429,9 @@ class ChargeprojectEnv(DirectRLEnv):
         return self.died, timed_out | full_time_out
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
+
         if env_ids is None:
-            env_ids = self._robot._ALL_INDICES
+            env_ids = self._robot._ALL_INDICES # type: ignore
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
@@ -447,6 +460,32 @@ class ChargeprojectEnv(DirectRLEnv):
 
         self._last_targets_reached[env_ids] = self._targets_reached[env_ids].clone()
 
+
+        self._time_outs[env_ids] = self.cfg.time_out_per_target
+        self._life_time[env_ids] = 0.0
+        self._targets_reached[env_ids] = 0
+
+        if self.scene.terrain is None:
+            return
+        
+        # Setup respawn position using flat patches
+        patches = self.scene.terrain.flat_patches["robot_spawn"]   # shape: (rows, cols, num_patches, 3)
+        patches = patches.reshape(-1, 3)   # patches.reshape(-1, 3)
+
+        n = len(env_ids)
+        idx = torch.randperm(patches.shape[0])[:n]
+        pos_w = patches[idx].clone()  
+        pos_w[:, 2] += 1.0 # slight offset above ground
+
+        # Random yaw
+        yaw = (torch.rand(n, device=pos_w.device) - 0.5) * 0.5
+        qw = torch.cos(0.5 * yaw)
+        qz = torch.sin(0.5 * yaw)
+        quat_w = torch.stack([qw, torch.zeros_like(qw), torch.zeros_like(qw), qz], dim=-1)
+
+        root_pose_w = torch.cat([pos_w, quat_w], dim=-1) 
+        self._robot.write_root_pose_to_sim(root_pose_w, env_ids)
+
         # Set Next target positions to be reset position
         self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[
             env_ids, :2
@@ -463,9 +502,6 @@ class ChargeprojectEnv(DirectRLEnv):
                 * self.cfg.time_out_per_target
             )
 
-        self._time_outs[env_ids] = self.cfg.time_out_per_target
-        self._life_time[env_ids] = 0.0
-        self._targets_reached[env_ids] = 0
 
     def _reached_target(self, env_ids):
         # Get robot and target positions (only x, y)
