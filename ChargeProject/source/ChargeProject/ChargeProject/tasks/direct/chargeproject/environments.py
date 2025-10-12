@@ -5,6 +5,7 @@ import isaaclab.sim as sim_utils
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
+"""
 ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(4.0, 4.0),
     border_width=2.0,
@@ -76,7 +77,6 @@ ROBOT_CFG = UNITREE_GO2_CFG.replace(  # type: ignore
     ),
 )
 
-"""
 ROUGH_TERRAINS_CFG_TEMP: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
@@ -136,11 +136,10 @@ TMPTMP = terrain_gen.TerrainImporterCfg(
         ),
         debug_vis=False,
     )
-    """
 
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
-    num_envs = int(1024)
+    num_envs = int(1024*32*4)
     env_spacing = 4.0
     replicate_physics = True
 
@@ -163,3 +162,4 @@ class MySceneCfg(InteractiveSceneCfg):
         debug_vis=False,
     )
 
+    """
