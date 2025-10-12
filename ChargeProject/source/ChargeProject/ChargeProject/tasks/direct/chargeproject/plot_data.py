@@ -24,7 +24,7 @@ def parse_tfevents_to_dataframe(acc):
     all_data = []
     for tag in tags:
         # Filter for only the reward-related tags at the source
-        if tag.startswith('Episode_Reward/'):
+        if tag.startswith('Info / Episode_Reward/'):
             events = acc.Scalars(tag)
             for event in events:
                 all_data.append({

@@ -59,7 +59,6 @@
                       "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.1.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrl/train.py",
-            //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
         },
         {

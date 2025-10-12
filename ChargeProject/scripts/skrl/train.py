@@ -250,9 +250,8 @@ def main(
 
     # create isaac environment
     env_cfg.log_dir = log_dir
-    env = gym.make(
-        args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None
-    )
+    env_cfg.cameras = args_cli.enable_cameras
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
@@ -292,12 +291,15 @@ def main(
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         runner.agent.load(resume_path)
-
+    torch.cuda.profiler.start()
     # run training
     runner.run()
 
     # close the simulator
     env.close()
+
+    torch.cuda.profiler.stop()
+
 
 
 if __name__ == "__main__":
