@@ -123,7 +123,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1 # 0.25  # meters
     time_out_per_target = 25 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    death_velocity_threshold = 10.0 # m/s
+    death_velocity_threshold = 20000.0 # m/s
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -133,9 +133,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.15# 0.2
     
-    progress_reward_scale = 50 *2 * 5 * 5
+    progress_reward_scale = 50 *2 * 5 * 4
     #progress_reward_scale = 50  * 5 * 5
-    progress_pow = 1.3
+    progress_pow = 1.2
     distance_lookback = 8
     #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 10   / 2.5#2#6
@@ -147,7 +147,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     still_penalty_scale = -5    * 8
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
-    z_vel_reward_scale = -30  * 4   / 6
+    z_vel_reward_scale = 0# -30  * 4   / 6
     ang_vel_reward_scale = -0.0375 * 10    * 18
     joint_torque_reward_scale = -5e-05 * 50     / 2#   / 20
     joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4
