@@ -301,8 +301,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     runner = Runner(env, agent_cfg)
 
-    insert_lstm("policy", runner, agent_cfg, env_cfg)
-    insert_lstm("value", runner, agent_cfg, env_cfg)
+    #insert_lstm("policy", runner, agent_cfg, env_cfg)
+    #insert_lstm("value", runner, agent_cfg, env_cfg)
     from types import MethodType
 
     def patched_pre_interaction(self, timestep: int, timesteps: int):
