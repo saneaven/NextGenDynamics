@@ -21,10 +21,10 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_middle_leg_lower_.*": 11.0,
     },
     velocity_limit={
-        "joint_body_leg_hip_.*": 15.0,
-        "joint_leg_hip_leg_upper_.*": 15.0,
-        "joint_leg_upper_leg_middle_.*": 15.0,
-        "joint_leg_middle_leg_lower_.*": 15.0,
+        "joint_body_leg_hip_.*": 4.0,
+        "joint_leg_hip_leg_upper_.*": 4.0,
+        "joint_leg_upper_leg_middle_.*": 4.0,
+        "joint_leg_middle_leg_lower_.*": 4.0,
     },
     stiffness={
         "joint_body_leg_hip_.*": 12.0,
