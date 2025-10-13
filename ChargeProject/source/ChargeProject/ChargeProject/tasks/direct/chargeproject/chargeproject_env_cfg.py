@@ -133,14 +133,14 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.15# 0.2
     
-    progress_reward_scale = 50 *2 * 5 * 4
+    progress_reward_scale = 50 *2 * 5 *2#* 4
     #progress_reward_scale = 50  * 5 * 5
     progress_pow = 1.2
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 10   / 2.5#2#6
+    velocity_alignment_reward_scale = 10 * 6 #2#6
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 500/15
+    reach_target_reward_scale = 500
     forward_vel_reward_scale = 0
     time_penalty_scale = 0
     death_penalty_scale = -200
@@ -149,10 +149,10 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = 0# -30  * 4   / 6
     ang_vel_reward_scale = -0.0375 * 10    * 18
-    joint_torque_reward_scale = -5e-05 * 50     / 2#   / 20
-    joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4
+    joint_torque_reward_scale = -5e-05 * 50     / 2 * 2#   / 20
+    joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4 * 4
     dof_vel_reward_scale = 0
-    action_rate_reward_scale = -0.003 * 3   * 3    * 1.5      * 2.5
+    action_rate_reward_scale = -0.003 * 3   * 3    * 1.5      * 2.5 * 2
     feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
     feet_air_time_target = 0.2
     feet_air_time_max = 0.2
