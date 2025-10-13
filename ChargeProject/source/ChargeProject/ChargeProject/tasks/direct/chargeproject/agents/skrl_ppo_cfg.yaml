@@ -25,7 +25,7 @@ models:
         hidden_size: 1024
         num_layers: 2
         sequence_length: 128
-        layers: [1024] # must match hidden_size
+        layers: [] #[1024] # must match hidden_size
       - name: net
         input: rnn
         layers: [512, 256, 128]
@@ -43,7 +43,7 @@ models:
         hidden_size: 1024
         num_layers: 2
         sequence_length: 128
-        layers: [1024] # must match hidden_size
+        layers: [] # [1024] # must match hidden_size
       - name: net
         input: rnn
         layers: [512, 256, 128]
