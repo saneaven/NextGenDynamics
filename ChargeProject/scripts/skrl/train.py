@@ -14,6 +14,7 @@ a more user-friendly way.
 
 import argparse
 import sys
+import torch.nn as nn
 
 from isaaclab.app import AppLauncher
 
@@ -133,9 +134,86 @@ def flatten_rnn_parameters(model: torch.nn.Module):
             print("Flattening RNN parameters to improve performance.")
             module.flatten_parameters()
 
+class LSTMWrapper(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, device,
+                 rollout_length=24, minibatch_size=6):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size=input_size,
+                            hidden_size=hidden_size,
+                            num_layers=num_layers,
+                            batch_first=True)
+        self.device = device
+        self.hidden = None  # to store (h, c)
+        self.rollout_length = rollout_length
+        self.minibatch_size = minibatch_size
+
+    def reset_rollout(self, batch_size, device=None):
+        """Initialize hidden states for rollout (called once on init)"""
+        if device is None:
+            device = next(self.parameters()).device
+
+        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
+        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size, device=device)
+
+        self.hidden_states = [(h0.clone(), c0.clone()) for _ in range(self.rollout_length)]
+        self.current_step = 0
+        self.rollout_batch_size = batch_size
+
+    def forward(self, x):
+        if x.ndim == 2:
+            x = x.unsqueeze(1)  # add seq dimension
+
+        batch_size = x.shape[0]
+
+        # Determine mode automatically
+        rollout_mode = (self.rollout_batch_size is not None and batch_size == self.rollout_batch_size)
+
+        if rollout_mode:
+            # Rollout mode: stepwise hidden states
+            if self.hidden_states is None:
+                self.reset_rollout(batch_size, device=x.device)
+
+            h, c = self.hidden_states[self.current_step]
+            out, (h_new, c_new) = self.lstm(x, (h, c))
+            self.hidden_states[self.current_step] = (h_new.detach(), c_new.detach())
+
+            # Advance rollout step
+            self.current_step = (self.current_step + 1) % self.rollout_length
+            return out[:, -1, :]
+        else:
+            # Training/minibatch forward: ignore stored hidden states
+            out, _ = self.lstm(x)
+            return out[:, -1, :]
+
+def insert_lstm(model_name, runner, agent_cfg, env_cfg):
+    model = runner.agent.models[model_name]
+    network = agent_cfg["models"][model_name]["network"]
+    found = []
+    for layer in network:
+        if layer.get("type", "").lower() == "lstm":
+            # change model.{layer["name"]}_container
+            print(f"Inserting LSTM layer '{layer['name']}' into model '{model_name}'")
+            setattr(model, f'{layer["name"]}_container', 
+                LSTMWrapper(
+                    input_size=env_cfg.observation_space,
+                    hidden_size=layer["hidden_size"],
+                    num_layers=layer["num_layers"],
+                    device=env_cfg.sim.device
+                ).to(env_cfg.sim.device)
+            )
+            found += [layer["name"]]
+            
+    #for layer in network:
+        # if input is in found
+        #if layer.get("input", "") in found:
+            #lstm_out, (h, c) = self.lstm_container(states)
+            #rnn_out = self.rnn_container(lstm_out)
+
 
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
+    print("---------------")
+    print(agent_cfg_entry_point, agent_cfg)
     """Train with skrl agent."""
     # override configurations with non-hydra CLI arguments
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
@@ -223,6 +301,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
     runner = Runner(env, agent_cfg)
 
+    insert_lstm("policy", runner, agent_cfg, env_cfg)
+    insert_lstm("value", runner, agent_cfg, env_cfg)
+    from types import MethodType
+
+    def patched_pre_interaction(self, timestep: int, timesteps: int):
+        done = (env.terminated | env.truncated).view(-1)
+        if done.any():
+            for name in ["policy", "value"]:
+                lstm = getattr(self.models[name], "rnn_container", None)
+                if lstm and lstm.hidden is not None:
+                    h, c = lstm.hidden
+                    h[:, done, :] = 0
+                    c[:, done, :] = 0
+                    lstm.hidden = (h, c)
+
+    #runner.agent.pre_interaction = MethodType(patched_pre_interaction, runner.agent)
+
     # --------------------------------------------------------------------
     # recursively find and flatten RNN parameters to avoid warnings and improve performance
     if hasattr(runner.agent, 'model'):
@@ -231,7 +326,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # --------------------------------------------------------------------
 
     env_cfg._agent = runner.agent  # to access the agent from within the env for logging
-    
+    print(dir(runner))
+    runner.agent.env = runner._env # to access terminations/truncations from within the agent for LSTM state reset
+
     # load checkpoint (if specified)
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")

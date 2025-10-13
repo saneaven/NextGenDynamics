@@ -41,7 +41,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #observation_space = 51
     #observation_space = 87 # without height scanner
     observation_space = 376 # with height scanner
-    state_space = 0
+    state_space = 376
     # simulation
     decimation = 2
     sim: SimulationCfg = SimulationCfg(
@@ -94,7 +94,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=4096*3, 
+        num_envs=int(1024),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -123,6 +123,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1 # 0.25  # meters
     time_out_per_target = 25 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
+    death_velocity_threshold = 10.0 # m/s
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -132,8 +133,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.15# 0.2
     
-    progress_reward_scale = 50  * 5 * 5*4# linear version ish
-    #progress_reward_scale = 50  * 5 * 5 # 1.5 version
+    progress_reward_scale = 50 *2 * 5 * 5
+    #progress_reward_scale = 50  * 5 * 5
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
