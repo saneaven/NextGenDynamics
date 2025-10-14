@@ -90,7 +90,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 0.15# 0.2
+    action_scale = 1# 0.2
     
     progress_reward_scale = 50.0 * 20.0 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version

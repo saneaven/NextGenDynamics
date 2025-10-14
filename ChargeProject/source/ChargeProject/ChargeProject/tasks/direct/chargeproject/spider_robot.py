@@ -11,6 +11,9 @@ from pathlib import Path
 FILE = Path(__file__).resolve() 
 SPIDER_PATH = FILE.parents[7] / "SpiderBot" / "spider" / "spider.usd"
 
+
+effort_mod = 8
+
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     joint_names_expr=[
         "joint_body_leg_hip_.*",
@@ -19,10 +22,10 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_middle_leg_lower_.*",
     ],
     effort_limit_sim={
-        "joint_body_leg_hip_.*": 12.0,
-        "joint_leg_hip_leg_upper_.*": 30.0,
-        "joint_leg_upper_leg_middle_.*": 22.0,
-        "joint_leg_middle_leg_lower_.*": 11.0,
+        "joint_body_leg_hip_.*": 16.0 * effort_mod,
+        "joint_leg_hip_leg_upper_.*": 30.0 * effort_mod,
+        "joint_leg_upper_leg_middle_.*": 22.0 * effort_mod,
+        "joint_leg_middle_leg_lower_.*": 15.0 * effort_mod,
     },
     velocity_limit_sim={
         "joint_body_leg_hip_.*": 4.0,
@@ -31,10 +34,10 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_middle_leg_lower_.*": 4.0,
     },
     stiffness={
-        "joint_body_leg_hip_.*": 12.0,
-        "joint_leg_hip_leg_upper_.*": 30.0,
-        "joint_leg_upper_leg_middle_.*": 22.0,
-        "joint_leg_middle_leg_lower_.*": 11.0,
+        "joint_body_leg_hip_.*": 16.0 * effort_mod,
+        "joint_leg_hip_leg_upper_.*": 30.0 * effort_mod,
+        "joint_leg_upper_leg_middle_.*": 22.0 * effort_mod,
+        "joint_leg_middle_leg_lower_.*": 15.0 * effort_mod,
     },
     damping={
         "joint_body_leg_hip_.*": 0.2,
@@ -72,11 +75,11 @@ SPIDER_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.2),  # start above the ground
-        # Default angles: body-hip=0°, hip-upper=-35°, upper-middle=70°, middle-lower=55°
+        # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=55°
         joint_pos={
             "joint_body_leg_hip_.*": math.radians(0.0),
-            "joint_leg_hip_leg_upper_.*": math.radians(35.0),
-            "joint_leg_upper_leg_middle_.*": math.radians(-70.0),
+            "joint_leg_hip_leg_upper_.*": math.radians(30.0),
+            "joint_leg_upper_leg_middle_.*": math.radians(-65.0),
             "joint_leg_middle_leg_lower_.*": math.radians(-55.0),
         },
     ),

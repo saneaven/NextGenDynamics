@@ -25,10 +25,12 @@ velocity_mod = 1
 damping_mod = 1
 friction_mod = 1
 
+
+# I DONT THINK THESE MATTER, SET IN ISAAC SIM
 # Density in kg/m^3
 # PLA/plastic ~ 1200, Aluminum ~ 2700, Steel ~ 7850
-body_density = 2400.0
-leg_density = 1200.0
+body_density = 2500.0
+leg_density = 2500.0
 foot_density = 1200.0
 
 # Turn first 3 limits to radians
