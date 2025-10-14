@@ -44,7 +44,7 @@
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
-                    "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
+                    // "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -56,7 +56,7 @@
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
-                      "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
+                    //   "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             "console": "integratedTerminal"

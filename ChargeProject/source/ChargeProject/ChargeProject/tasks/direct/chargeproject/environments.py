@@ -97,7 +97,7 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
             micro_downsampled_scale=0.1,
             flat_patch_sampling={
                 "robot_spawn": terrain_gen.FlatPatchSamplingCfg(
-                    num_patches=2048, patch_radius=1.0, max_height_diff=0.2
+                    num_patches=1024, patch_radius=1.2, max_height_diff=0.15
                 ),
             },
             size=(128., 128.)

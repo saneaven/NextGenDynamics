@@ -24,7 +24,7 @@ models:
         type: lstm
         hidden_size: 1024
         num_layers: 2
-        sequence_length: 128
+        sequence_length: 64
         layers: [] #[1024] # must match hidden_size
       - name: net
         input: rnn
@@ -42,7 +42,7 @@ models:
         type: lstm
         hidden_size: 1024
         num_layers: 2
-        sequence_length: 128
+        sequence_length: 64
         layers: [] # [1024] # must match hidden_size
       - name: net
         input: rnn
