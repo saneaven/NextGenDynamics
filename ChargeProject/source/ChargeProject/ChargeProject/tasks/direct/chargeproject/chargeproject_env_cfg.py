@@ -47,8 +47,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
-            #gpu_collision_stack_size = 2**27,
-            #gpu_max_rigid_patch_count = 2**19
+            gpu_collision_stack_size = 2**27,
+            gpu_max_rigid_patch_count = 2**19
         )
     )
     # robot(s)
@@ -94,7 +94,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024),
+        num_envs=int(1024*8),
         env_spacing=4.0, 
         replicate_physics=True
     )

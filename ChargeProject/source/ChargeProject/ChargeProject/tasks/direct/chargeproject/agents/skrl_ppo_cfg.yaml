@@ -18,7 +18,7 @@ models:
     max_log_std: 2.0
     initial_log_std: 0.0
     network:
-      - name: ltsm # must be called ltsm
+      - name: rnn # must be called rnn
         input: STATES
         # lstm is inserted in train.py
         type: lstm
@@ -26,8 +26,8 @@ models:
         num_layers: 2
         sequence_length: 128
         layers: [] #[1024] # must match hidden_size
-      - name: rnn
-        input: ltsm
+      - name: net
+        input: rnn
         layers: [512, 256, 128]
         #layers: [256, 128]
         activations: elu
@@ -36,7 +36,7 @@ models:
     class: DeterministicMixin
     clip_actions: False
     network:
-      - name: ltsm # must be called ltsm
+      - name: rnn # must be called rnn
         input: STATES
         # lstm is inserted in train.py
         type: lstm
@@ -45,7 +45,7 @@ models:
         sequence_length: 128
         layers: [] # [1024] # must match hidden_size
       - name: net
-        input: ltsm
+        input: rnn
         layers: [512, 256, 128]
         activations: elu
     output: ONE
