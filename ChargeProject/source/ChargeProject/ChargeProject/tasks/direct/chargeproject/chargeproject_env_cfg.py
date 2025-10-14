@@ -131,9 +131,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 0.15# 0.2
+    action_scale = 1# 0.2
     
-    progress_reward_scale = 50 *2 * 5 *2#* 4
+    progress_reward_scale = 50 *2 * 5 *2 * 8
     #progress_reward_scale = 50  * 5 * 5
     progress_pow = 1.2
     distance_lookback = 8
@@ -156,6 +156,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
     feet_air_time_target = 0.2
     feet_air_time_max = 0.2
-    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5 * 2
+    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5 * 2 * 2
     flat_orientation_reward_scale = -1*15  * 3
     #lower_leg_penalty_scale = -450 * 4 * 2 / 10
