@@ -149,13 +149,13 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #yaw_rate_reward_scale = 0.75
     z_vel_reward_scale = 0# -30  * 4   / 6
     ang_vel_reward_scale = -0.0375 * 10    * 18
-    joint_torque_reward_scale = -5e-05 * 50     / 2 * 2#   / 20
+    joint_torque_reward_scale = 0#-5e-05 * 50     / 2 * 2#   / 20
     joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4 * 4
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003 * 3   * 3    * 1.5      * 2.5 * 2
     feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
     feet_air_time_target = 0.2
     feet_air_time_max = 0.2
-    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5
+    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5 * 2
     flat_orientation_reward_scale = -1*15  * 3
     #lower_leg_penalty_scale = -450 * 4 * 2 / 10
