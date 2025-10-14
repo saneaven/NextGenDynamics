@@ -43,8 +43,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
-            gpu_collision_stack_size = 2**27,
-            gpu_max_rigid_patch_count = 2**19
+            #gpu_collision_stack_size = 2**27,
+            #gpu_max_rigid_patch_count = 2**19
         )
     )
     
