@@ -11,8 +11,8 @@ from isaaclab_assets.robots.anymal import ANYMAL_C_CFG  # noqa isort: skip
 from isaaclab_assets.robots.spot import SPOT_CFG  # noqa
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
-#from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg, ROBOT_CFG
-
+from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg
+from isaaclab.assets import AssetBaseCfg
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -20,49 +20,7 @@ from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg, PhysxCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
-from .spider_robot import SPIDER_CFG
 import isaaclab.terrains as terrain_gen
-
-from ChargeProject.tasks.direct.chargeproject.double_noise_env import HfTwoScaleNoiseCfg
-from isaaclab.terrains import TerrainImporterCfg
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
-
-
-SMOOTH_TERRAIN_CFG = terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
-    size=(64.0, 64.0),
-    # border_width=10.0,
-    num_rows=1,
-    num_cols=1,
-    color_scheme="random",
-    vertical_scale=0.000003,
-    horizontal_scale=0.05,
-    sub_terrains={
-        "random_uniform": HfTwoScaleNoiseCfg(
-            proportion=1.0,
-            macro_noise_step=0.005,
-            macro_noise_range=(-0.3, 0.3),
-            macro_downsampled_scale=1.6,
-            micro_noise_step=0.000003,
-            micro_noise_range=(-0.2, 0.2),
-            micro_downsampled_scale=0.05,
-            flat_patch_sampling={
-                "robot_spawn": terrain_gen.FlatPatchSamplingCfg(
-                    num_patches=2048, patch_radius=1.0, max_height_diff=0.5
-                ),
-            },
-            size=(128., 128.)
-        ),
-        # "plane": terrain_gen.MeshPlaneTerrainCfg(
-        #     proportion=0.2,
-        #     size=(2,2),
-        #     flat_patch_sampling={
-        #         "robot_spawn": terrain_gen.FlatPatchSamplingCfg(
-        #             num_patches=100, patch_radius=1.0, max_height_diff=0.5
-        #         ),
-        #     },
-        # ),
-    },
-)
 
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
@@ -89,10 +47,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
             #gpu_max_rigid_patch_count = 2**19
         )
     )
-    # robot(s)
-    robot: ArticulationCfg = SPIDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    #robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
-    #robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     
     # Spider Robot (base, leg_hip_i, leg_middle_i, leg_lower_i, leg_foot_i)
     base_name = "body"
@@ -115,59 +69,14 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # foot_names = ".*FOOT"
     # undesired_contact_body_names = ".*THIGH"
 
-    contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="/World/envs/env_.*/Robot/.*",
-        history_length=3,
-        update_period=0.005,
-        track_air_time=True,
-    )
-
-    height_scanner = RayCasterCfg(
-        prim_path=f"/World/envs/env_.*/Robot/{base_name}",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.6]),  # type: ignore
-        debug_vis=False,
-        mesh_prim_paths=["/World/terrain"],
-    )
-
-    lidar_sensor = RayCasterCfg(
-        prim_path=f"/World/envs/env_.*/Robot/{base_name}",
-        update_period=1 / 60,
-        offset=RayCasterCfg.OffsetCfg(pos=(0, 0, 0)),
-        mesh_prim_paths=["/World/terrain"],
-        ray_alignment="yaw",
-        pattern_cfg=patterns.LidarPatternCfg(
-            channels=3, vertical_fov_range=(-30.0, 30.0), horizontal_fov_range=(-180.0, 180.0), horizontal_res=10.0
-        )
-    )
     
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=1024, 
-        env_spacing=4.0, 
+    scene: MySceneCfg = MySceneCfg(
+        num_envs=1024,
+        env_spacing=4.0,
         replicate_physics=True
     )
-
-    terrain = TerrainImporterCfg(
-        prim_path="/World/terrain",
-        terrain_type="generator",
-        terrain_generator=SMOOTH_TERRAIN_CFG,
-        max_init_terrain_level=9,
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-        ),
-        visual_material=sim_utils.MdlFileCfg(
-            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
-            project_uvw=True,
-        ),
-        debug_vis=False,
-    )
-
+    
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
     success_tolerance = 1.0 #1  # meters
@@ -182,7 +91,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.15# 0.2
     
-    progress_reward_scale = 50  * 5 * 5*4# linear version ish
+    progress_reward_scale = 50.0 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
@@ -202,7 +111,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     jump_penalty_scale = -10.0
     ang_vel_reward_scale = -0.0375
     joint_torque_reward_scale = -5e-05
-    joint_accel_reward_scale = -1.0e-7 # -1.5e-7
+    joint_accel_reward_scale = -1.0e-7 / 2.0 # -1.5e-7
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.003
     feet_air_time_reward_scale = 3.0

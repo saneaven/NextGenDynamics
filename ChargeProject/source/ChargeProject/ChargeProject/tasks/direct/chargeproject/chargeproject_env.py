@@ -97,31 +97,27 @@ class ChargeprojectEnv(DirectRLEnv):
         with open(os.path.join(log_dir, "env_code.py.txt"), "w") as f:
             with open(current_file, "r") as current_f:
                 f.write(current_f.read())
-        
 
     def _setup_scene(self):
-        self._robot = Articulation(self.cfg.robot)
+        self._robot = Articulation(self.cfg.scene.robot)
         self.scene.articulations["robot"] = self._robot
-        self._contact_sensor = ContactSensor(self.cfg.contact_sensor)
+        self._contact_sensor = ContactSensor(self.cfg.scene.contact_sensor)
         self.scene.sensors["contact_sensor"] = self._contact_sensor
 
         # we add a height scanner for perceptive locomotion
-        self._height_scanner = RayCaster(self.cfg.height_scanner)
+        self._height_scanner = RayCaster(self.cfg.scene.height_scanner)
         self.scene.sensors["height_scanner"] = self._height_scanner
-        
-        self.cfg.terrain.num_envs = self.scene.cfg.num_envs
-        self.cfg.terrain.env_spacing = self.scene.cfg.env_spacing
-        self._terrain = self.cfg.terrain.class_type(self.cfg.terrain)
-        
-        if self.cfg.cameras:
-            self.goal_pos_visualizer = self._create_sphere_markers(
-                self.cfg.marker_colors, 0.25, "/Visuals/Command/goal_position"
-            )
-            self.identifier_visualizer = self._create_arrow_markers(
-                self.cfg.marker_colors, "/Visuals/Command/identifier_arrow"
-            )
 
-        self._lidar_sensor = RayCaster(self.cfg.lidar_sensor)
+        self._lidar_sensor = RayCaster(self.cfg.scene.lidar_sensor)
+        self.scene.sensors["lidar_sensor"] = self._lidar_sensor
+        
+        self.goal_pos_visualizer = self._create_sphere_markers(
+            self.cfg.marker_colors, 0.25, "/Visuals/Command/goal_position"
+        )
+        self.identifier_visualizer = self._create_arrow_markers(
+            self.cfg.marker_colors, "/Visuals/Command/identifier_arrow"
+        )
+
 
         # add ground plane
         # spawn_ground_plane(prim_path="/World/ground", cfg=GroundPlaneCfg())
@@ -142,8 +138,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._actions = actions.clone()
         target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w[:, :2], dim=1)
 
-        if self.cfg.cameras:
-            self._visualize_markers(target_distance)
+ 
+        self._visualize_markers(target_distance)
 
         index = self._sim_step_counter % self.cfg.distance_lookback
         
@@ -325,8 +321,7 @@ class ChargeprojectEnv(DirectRLEnv):
         ]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
         
-        air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
-        air_time = torch.clamp(air_time, max=self.cfg.feet_air_time_max)
+        air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
         
         # check jump (all feet in the air at the same time)
         current_air_times = self._contact_sensor.data.current_air_time[:, self.feet_ids]
@@ -380,7 +375,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "jump_penalty": jump_penalty * self.cfg.jump_penalty_scale * self.step_dt,
             "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
@@ -474,8 +469,8 @@ class ChargeprojectEnv(DirectRLEnv):
         joint_pos = self._robot.data.default_joint_pos[env_ids]
         joint_vel = self._robot.data.default_joint_vel[env_ids]
         default_root_state = self._robot.data.default_root_state[env_ids]
-        #default_root_state[:, :3] += self.scene.env_origins[env_ids]
-        default_root_state[:, :3] += self._terrain.env_origins[env_ids]
+        default_root_state[:, :3] += self.scene.env_origins[env_ids]
+        # default_root_state[:, :3] += self._terrain.env_origins[env_ids]
         self._robot.write_root_pose_to_sim(default_root_state[:, :7], env_ids)
         self._robot.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids)
         self._robot.write_joint_state_to_sim(joint_pos, joint_vel, None, env_ids)
@@ -488,6 +483,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._targets_reached[env_ids] = 0
 
         if self.scene.terrain is None:
+            print("Terrain not found, cannot sample spawn positions.")
             return
         
         # Setup respawn position using flat patches
