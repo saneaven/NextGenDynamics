@@ -94,7 +94,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*8),
+        num_envs=int(1024/4),
         env_spacing=4.0, 
         replicate_physics=True
     )
