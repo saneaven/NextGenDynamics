@@ -22,10 +22,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             role="value"
         )
 
-        self.num_envs = num_envs
         self.hidden_size = 512
-        self.sequence_length = 1
+        self.sequence_length = 128
         self.num_layers = 2
+
+        self.num_envs = num_envs
+        #self.num_envs = num_envs // self.sequence_length
 
         self.lstm = nn.LSTM(
             input_size=self.observation_space.shape[0],
@@ -86,11 +88,20 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     # === RNN rollout logic ===
     def rnn_rollout(self, states, terminated, hidden_states):
-        hx, cx = hidden_states
-
         if self.training:
             # reshape to (batch, seq, features)
             rnn_input = states.view(-1, self.sequence_length, states.shape[-1])
+            
+            h, c = hidden_states
+
+            h = h.view(
+                self.num_layers, -1, self.sequence_length, h.shape[-1]
+            )[:, :, 0, :].contiguous()
+            c = c.view(
+                self.num_layers, -1, self.sequence_length, c.shape[-1]
+            )[:, :, 0, :].contiguous()
+
+            hidden_states = (h.contiguous(), c.contiguous())
 
             if terminated is not None and torch.any(terminated):
                 # handle resets within the sequence
@@ -105,19 +116,22 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 )
                 for i in range(len(indexes) - 1):
                     i0, i1 = indexes[i], indexes[i + 1]
-                    rnn_output, (hx, cx) = self.lstm(rnn_input[:, i0:i1, :], (hx.contiguous(), cx.contiguous()))
-                    hx[:, terminated[:, i1 - 1], :] = 0
-                    cx[:, terminated[:, i1 - 1], :] = 0
+                    rnn_output, (h, c) = self.lstm(
+                        rnn_input[:, i0:i1, :], hidden_states
+                    )
+                    h[:, (terminated[:, i1 - 1]), :] = 0
+                    c[:, (terminated[:, i1 - 1]), :] = 0
+                    hidden_states = (h, c)
                     rnn_outputs.append(rnn_output)
                 rnn_output = torch.cat(rnn_outputs, dim=1)
             else:
-                rnn_output, (hx, cx) = self.lstm(rnn_input, (hx.contiguous(), cx.contiguous()))
+                rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
         else:
             # evaluation mode: one step at a time
             rnn_input = states.view(-1, 1, states.shape[-1])
-            rnn_output, (hx, cx) = self.lstm(rnn_input, (hx.contiguous(), cx.contiguous()))
+            rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
 
         # flatten batch + sequence
         rnn_output = torch.flatten(rnn_output, start_dim=0, end_dim=1)
 
-        return rnn_output, {"rnn": [hx, cx]}
+        return rnn_output, {"rnn": hidden_states}
