@@ -68,6 +68,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self._last_targets_reached = torch.zeros(self.num_envs, device=self.device)
 
         self.died = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         # X/Y linear velocity and yaw angular velocity commands
         # self._commands = torch.zeros(self.num_envs, 3, device=self.device)
@@ -227,7 +229,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         observations = self._get_observations_impl(height_scanner_data)
         # Need to clone because of torch.compile
-        observations = {"policy": observations.clone()}
+        observations = {"policy": observations.clone()}# for rl_games, "critic": observations.clone()}
         return observations
 
    #@torch.compile(mode="reduce-overhead")    
@@ -435,14 +437,20 @@ class ChargeprojectEnv(DirectRLEnv):
         timed_out = self._time_since_target > self._time_outs
         # change it so seperate gtime_outs
         #terminate = died | timed_out
+
+        # also died if velocity is too high
+        too_fast = torch.linalg.norm(self._robot.data.root_lin_vel_w, dim=1) > self.cfg.death_velocity_threshold
         
         # Logging deaths/time outs per second
         if self.cfg.log:
-            self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out) / self.step_dt / self.num_envs)
-            self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out) / self.step_dt / self.num_envs)
-            self._log_data("Episode_Termination/died", torch.count_nonzero(self.died) / self.step_dt / self.num_envs)
+            self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out) / self.num_envs)
+            self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out) / self.num_envs)
+            self._log_data("Episode_Termination/died", torch.count_nonzero(self.died) / self.num_envs)
+            self._log_data("Episode_Termination/too_fast", torch.count_nonzero(too_fast) / self.num_envs)
 
-        return self.died, timed_out | full_time_out
+        self.terminated = self.died | too_fast
+        self.truncated = timed_out | full_time_out
+        return self.terminated, self.truncated
 
     def _reset_idx(self, env_ids: Sequence[int] | None):
 
@@ -517,6 +525,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         self._time_outs[env_ids] = self.cfg.time_out_per_target
         self._targets_reached[env_ids] = 0
+
     
     def _log_data(self, key, data) -> None:
         self.extras["log"][key] = data

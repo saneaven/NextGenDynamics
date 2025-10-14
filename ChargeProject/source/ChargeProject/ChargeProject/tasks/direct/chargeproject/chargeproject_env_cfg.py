@@ -43,8 +43,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
-            #gpu_collision_stack_size = 2**27,
-            #gpu_max_rigid_patch_count = 2**19
+            gpu_collision_stack_size = 2**27,
+            gpu_max_rigid_patch_count = 2**19
         )
     )
     
@@ -82,6 +82,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1.0 #1  # meters
     time_out_per_target = 30.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
+    death_velocity_threshold = 20000.0 # m/s
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
