@@ -22,12 +22,11 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             role="value"
         )
 
-        self.hidden_size = 512
+        self.hidden_size = 512 * 2
         self.sequence_length = 128
         self.num_layers = 2
 
         self.num_envs = num_envs
-        #self.num_envs = num_envs // self.sequence_length
 
         self.lstm = nn.LSTM(
             input_size=self.observation_space.shape[0],
