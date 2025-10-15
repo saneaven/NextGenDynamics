@@ -94,7 +94,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*3),
+        num_envs=512,#int(1024*3.5),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -123,7 +123,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1 # 0.25  # meters
     time_out_per_target = 25 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    death_velocity_threshold = 20000.0 # m/s
+    base_on_ground_time = 0.05 #seconds before death if base is on ground
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -131,31 +131,31 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 1# 0.2
+    action_scale = 0.7
     
-    progress_reward_scale = 50 *2 * 5 *2 * 8
-    #progress_reward_scale = 50  * 5 * 5
-    progress_pow = 1.2
-    distance_lookback = 8
-    #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 10 * 6 #2#6
+    progress_reward_scale = 2000
+    progress_pow = 1#1.2
+    distance_lookback = 6
+
+    velocity_alignment_reward_scale = 200
     # Multiplied by targets hit reward
     reach_target_reward_scale = 500
     forward_vel_reward_scale = 0
     time_penalty_scale = 0
-    death_penalty_scale = -200
-    still_penalty_scale = -5    * 8
-    #lin_vel_reward_scale = 1.5
-    #yaw_rate_reward_scale = 0.75
-    z_vel_reward_scale = 0# -30  * 4   / 6
-    ang_vel_reward_scale = -0.0375 * 10    * 18
-    joint_torque_reward_scale = 0#-5e-05 * 50     / 2 * 2#   / 20
-    joint_accel_reward_scale = -1.5e-7 / 3   * 1.5    / 4 * 4
+    death_penalty_scale = -1000
+    still_penalty_scale = -20
+    z_vel_reward_scale = 0
+    ang_vel_reward_scale = -1.35
+    joint_torque_reward_scale = -0.0000125
+    joint_accel_reward_scale = -8.0e-08
     dof_vel_reward_scale = 0
-    action_rate_reward_scale = -0.003 * 3   * 3    * 1.5      * 2.5 * 2
-    feet_air_time_reward_scale = 1.5 / 1.4   * 10    * 8     * 5
-    feet_air_time_target = 0.2
-    feet_air_time_max = 0.2
-    undesired_contact_reward_scale = -0.75   * 2    * 2     * 5 * 2 * 2
-    flat_orientation_reward_scale = -1*15  * 3
-    #lower_leg_penalty_scale = -450 * 4 * 2 / 10
+    action_rate_reward_scale = -0.8
+    feet_air_time_reward_scale = 90
+    feet_air_time_target = 0.3
+    feet_air_time_max = 0.3
+    
+    undesired_contact_reward_scale = -25
+    stable_contact_reward_scale = 20
+    flat_orientation_reward_scale = -80
+    feet_height_penalty_scale = -10
+    lower_leg_penalty_scale = -20
