@@ -147,16 +147,25 @@ class ChargeprojectEnv(DirectRLEnv):
         self.processed_actions = (
             self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
         )
-
+        """
+        lower_joint_ids = self._robot.find_joints("joint_leg_middle_leg_lower_.*")[0]
         # For testing standing on 3 legs
-        #if self.common_step_counter % 400 >= 200:
-        #    self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
-        #    even_joints = self._robot.find_joints(".*0.*|.*2.*|.*4.*")[0]
-        #    even_joints = [j for j in even_joints if j in self.dof_idx]
-        #    self.processed_actions[:, even_joints] = 0
-        #else:
-        #    self.processed_actions = 0
-        
+        if self.common_step_counter % 600 <= 100:
+            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
+            self.processed_actions[:, lower_joint_ids] -= 1
+            #even_joints = self._robot.find_joints(".*0.*|.*2.*|.*4.*")[0]
+            #even_joints = [j for j in even_joints if j in self.dof_idx]
+            #self.processed_actions[:, even_joints] = 0
+        elif self.common_step_counter % 600 <= 200:
+            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
+        elif self.common_step_counter % 600 <= 300:
+            self.processed_actions = 0
+        elif self.common_step_counter % 600 <= 400:
+            self.processed_actions = -self._robot.data.default_joint_pos[:, self.dof_idx]
+        else:
+            self.processed_actions = -self._robot.data.default_joint_pos[:, self.dof_idx]
+            self.processed_actions[:, lower_joint_ids] += 1
+        """
         # print the actions of the first env
         #if self._sim_step_counter % 2 == 0:
         #    print(self.processed_actions[0].shape, self.processed_actions[0])
@@ -384,7 +393,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "desired_contacts": stable_contact * self.cfg.stable_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "feet_height_penalty": feet_height_penalty * self.cfg.feet_height_penalty_scale * self.step_dt,
-            "lower_leg_penalty": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
+            "lower_leg_reward": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
         }
 
 
