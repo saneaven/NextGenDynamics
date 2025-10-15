@@ -23,9 +23,23 @@ def two_scale_noise_terrain(difficulty: float, cfg: "HfTwoScaleNoiseCfg") -> np.
         )
         
         return hf_terrains.random_uniform_terrain.__wrapped__(0.0, sub).astype(np.int32)
+    
+    def make_wave(amplitude_range):
+        sub = hf_terrains_cfg.HfWaveTerrainCfg(
+            size=base.size,
+            horizontal_scale=base.horizontal_scale,
+            vertical_scale=base.vertical_scale,
+            amplitude_range=amplitude_range,
+            num_waves=int(base.size[0]/6.0),
+            border_width=base.border_width,
+            slope_threshold=base.slope_threshold,
+        )
+
+        return hf_terrains.wave_terrain.__wrapped__(0.0, sub).astype(np.int32)
 
     # Generate two different scale noises and combine them
-    z_macro = make_ru(cfg.macro_noise_range, cfg.macro_noise_step, cfg.macro_downsampled_scale) # large hills
+    # z_macro = make_ru(cfg.macro_noise_range, cfg.macro_noise_step, cfg.macro_downsampled_scale) # large hills
+    z_macro = make_wave(cfg.macro_noise_range) # large hills
     
     z_micro = make_ru(cfg.micro_noise_range, cfg.micro_noise_step, cfg.micro_downsampled_scale) # fine surface roughness
     z = z_macro + z_micro

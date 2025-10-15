@@ -22,21 +22,26 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             role="value"
         )
 
-        self.hidden_size = 1024
+        self.hidden_size = 512
         self.sequence_length = 64
         self.num_layers = 2
 
         self.num_envs = num_envs
 
+        self.net1 = nn.Sequential(
+            nn.Linear(in_features=self.observation_space.shape[0], out_features=512),
+            nn.ELU(),
+        )
+
         self.lstm = nn.LSTM(
-            input_size=self.observation_space.shape[0],
+            input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,  # Using a single LSTM layer
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
         )
 
-        self.net = nn.Sequential(
-            nn.Linear(in_features=self.hidden_size, out_features=512),
+        self.net2 = nn.Sequential(
+            nn.Linear(in_features=self.hidden_size, out_features=256),
             nn.ELU(),
             nn.LazyLinear(out_features=256),
             nn.ELU(),
@@ -71,10 +76,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         terminated = inputs.get("terminated", None)
         hidden_states = inputs["rnn"]
 
-        # hidden_states = [hx, cx]
-        rnn_output, rnn_dict = self.rnn_rollout(states, terminated, hidden_states)
+        encoded_states = self.net1(states)
 
-        net = self.net(rnn_output)
+        # hidden_states = [hx, cx]
+        rnn_output, rnn_dict = self.rnn_rollout(encoded_states, terminated, hidden_states)
+
+        net = self.net2(rnn_output)
         self._shared_output = net
 
         if role == "policy":

@@ -77,6 +77,13 @@ ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerato
     },
 )
 
+VERTICAL_SCALE = 0.000005
+
+MICRO_TERRAIN_STEP = VERTICAL_SCALE
+MICRO_TERRAIN_SCALE = VERTICAL_SCALE * 10000.0
+
+MACRO_TERRAIN_STEP = VERTICAL_SCALE * 10000.0
+MACRO_TERRAIN_SCALE = VERTICAL_SCALE * 32767.0
 
 SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(128.8, 128.0),
@@ -84,16 +91,17 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
     num_rows=1,
     num_cols=1,
     color_scheme="random",
-    vertical_scale=0.000005,
+    vertical_scale=VERTICAL_SCALE,
     horizontal_scale=0.1,
+    slope_threshold=None,
     sub_terrains={
         "random_uniform": HfTwoScaleNoiseCfg(
             proportion=1.0,
-            macro_noise_step=0.0005,
-            macro_noise_range=(-0.25, 0.25),
-            macro_downsampled_scale=0.8,
-            micro_noise_step=0.000005,
-            micro_noise_range=(-0.05, 0.05),
+            macro_noise_step=MACRO_TERRAIN_STEP,
+            macro_noise_range=(-MACRO_TERRAIN_SCALE, MACRO_TERRAIN_SCALE),
+            macro_downsampled_scale=None,
+            micro_noise_step= MICRO_TERRAIN_STEP,
+            micro_noise_range=(-MICRO_TERRAIN_SCALE, MICRO_TERRAIN_SCALE),
             micro_downsampled_scale=0.1,
             flat_patch_sampling={
                 "robot_spawn": terrain_gen.FlatPatchSamplingCfg(

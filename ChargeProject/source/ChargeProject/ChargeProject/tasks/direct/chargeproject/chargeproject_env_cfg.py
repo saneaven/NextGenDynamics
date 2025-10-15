@@ -111,10 +111,10 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     z_vel_penalty_scale = -0.001
     jump_penalty_scale = -1.0
     ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -5e-05
-    joint_accel_reward_scale = 0 # -1.0e-7 # idk this works # -1.5e-7 
+    joint_torque_reward_scale = -1e-06
+    joint_accel_reward_scale = -5.0e-09 # idk this works # -1.5e-07
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.001
-    feet_air_time_reward_scale = 2.0
+    feet_air_time_reward_scale = 1.0
     undesired_contact_reward_scale = -0.1 ## -0.75
     flat_orientation_reward_scale = -1.2
