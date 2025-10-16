@@ -61,6 +61,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
     lower_leg_names = "leg_lower_.*"
+    hip_joint_names = "joint_body_leg_hip_.*"
 
     # Unitree Go2
     #base_name = "base"
@@ -133,11 +134,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.7
     
-    progress_reward_scale = 2500
-    progress_pow = 1#1.2
+    progress_reward_scale = 2500 * 3 # push for doing something
+    progress_pow = 1.2
     distance_lookback = 6
 
-    velocity_alignment_reward_scale = 80
+    velocity_alignment_reward_scale = 80 * 3 # push for doing something
     # Multiplied by targets hit reward
     reach_target_reward_scale = 500
     forward_vel_reward_scale = 0
@@ -146,16 +147,21 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     still_penalty_scale = -20
     z_vel_reward_scale = 0
     ang_vel_reward_scale = -1.35
-    joint_torque_reward_scale = -0.00003
-    joint_accel_reward_scale = -8.0e-08
+    joint_torque_reward_scale = -0.00003 * 2
+    joint_accel_reward_scale = -8.0e-08 * 6
     dof_vel_reward_scale = 0
-    action_rate_reward_scale = -1.2
-    feet_air_time_reward_scale = 90
+    action_rate_reward_scale = -1.2 * 5
+
+    feet_air_time_reward_scale = 90 * 3
     feet_air_time_target = 0.3
     feet_air_time_max = 0.3
     
-    undesired_contact_reward_scale = -35
+    undesired_contact_reward_scale = -35 * 5
     stable_contact_reward_scale = 20
     flat_orientation_reward_scale = -80
-    feet_height_penalty_scale = -10
-    lower_leg_penalty_scale = 25
+    body_height_reward_scale = 800
+    lower_leg_reward_scale = 25 * 4
+    hip_penalty_scale = -250
+    feet_under_body_penalty_scale = -20
+
+    body_penalty_radius = 0.2

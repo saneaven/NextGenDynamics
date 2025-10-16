@@ -63,13 +63,14 @@ class ChargeprojectEnv(DirectRLEnv):
         # X/Y linear velocity and yaw angular velocity commands
         # self._commands = torch.zeros(self.num_envs, 3, device=self.device)
 
-        self.base_id, _ = self._contact_sensor.find_bodies(self.cfg.base_name)
+        self.base_ids, _ = self._contact_sensor.find_bodies(self.cfg.base_name)
         self.feet_ids, _ = self._contact_sensor.find_bodies(self.cfg.foot_names)
         self.undesired_contact_body_ids, _ = self._contact_sensor.find_bodies(
             self.cfg.undesired_contact_body_names
         )
         self.body_id = self._robot.data.body_names.index(self.cfg.base_name)
         self.lower_leg_ids, _ = self._robot.find_bodies(self.cfg.lower_leg_names)
+        self.hip_joint_ids, _ = self._robot.find_joints(self.cfg.hip_joint_names)
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
@@ -292,7 +293,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # died if gravity is near positive (flipped over)
         died = self._robot.data.projected_gravity_b[:, 2] > 0.0
-        base_contact_time = self._contact_sensor.data.current_contact_time[:, self.base_id].squeeze(-1)
+        base_contact_time = self._contact_sensor.data.current_contact_time[:, self.base_ids].squeeze(-1)
         on_ground = base_contact_time > self.cfg.base_on_ground_time
         death_penalty = died.float() + on_ground.float()
 
@@ -352,14 +353,14 @@ class ChargeprojectEnv(DirectRLEnv):
         )
 
         # Feet height penalty
-        base_height = self._robot.data.body_pos_w[:, self.base_id, 2]  # [envs, 1]
+        base_height = self._robot.data.body_pos_w[:, self.base_ids, 2]  # [envs, 1]
         feet_height = self._robot.data.body_pos_w[:, self.feet_ids, 2] # [envs, num_feet]
 
-        # Compute positive difference (only if feet are above base)
-        feet_above_base = torch.clamp(feet_height - base_height, min=0.0)
+        # Compute positive difference
+        body_relative_height = base_height - feet_height
 
         # Mean or sum over feet (you can adjust depending on desired strength)
-        feet_height_penalty = torch.mean(feet_above_base, dim=1)  # [envs]
+        body_height_reward = torch.mean(body_relative_height, dim=1)  # [envs]
 
         # Lower leg upright penalty
         lower_leg_quats_w = self._robot.data.body_quat_w[:, self.lower_leg_ids]
@@ -369,8 +370,28 @@ class ChargeprojectEnv(DirectRLEnv):
         world_leg_axis = math_utils.quat_apply(lower_leg_quats_w, expanded_leg_axis)
         cos_angle = torch.sum(world_leg_axis * self._up_dir, dim=-1)
         angle_from_vertical_rad = torch.acos(torch.clamp(cos_angle, -1.0, 1.0))
-        lower_leg_penalty = torch.mean(angle_from_vertical_rad, dim=1)
+        lower_leg_reward = torch.mean(angle_from_vertical_rad, dim=1)
 
+        # Hip joint deviation from neutral (0)
+        hip_joint_positions = self._robot.data.joint_pos[:, self.hip_joint_ids]  # [envs, num_hips]
+        hip_deviation = torch.abs(hip_joint_positions)  # absolute deviation from 0
+        hip_penalty = torch.mean(hip_deviation, dim=1)
+
+        # Feet under body penalty
+        base_pos_xy = self._robot.data.body_pos_w[:, self.base_ids, :2].squeeze(1) # [envs, 2]
+        feet_pos_xy = self._robot.data.body_pos_w[:, self.feet_ids, :2] # [envs, num_feet, 2]
+
+        # Horizontal distance of each foot from body center
+        feet_dist_to_base = torch.linalg.norm(feet_pos_xy - base_pos_xy.unsqueeze(1), dim=2)  # [envs, num_feet]
+
+        # Feet that are within the body cylinder (radius < 0.25)
+        under_body_mask = feet_dist_to_base < self.cfg.body_penalty_radius
+
+        # Compute how deep they are inside (closer to center = higher penalty)
+        under_body_depth = torch.clamp(self.cfg.body_penalty_radius - feet_dist_to_base, min=0.0)
+
+        # Mean penalty per environment (across all feet)
+        feet_under_body_penalty = torch.mean(under_body_depth * under_body_mask.float(), dim=1)
 
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -392,8 +413,10 @@ class ChargeprojectEnv(DirectRLEnv):
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "desired_contacts": stable_contact * self.cfg.stable_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
-            "feet_height_penalty": feet_height_penalty * self.cfg.feet_height_penalty_scale * self.step_dt,
-            "lower_leg_reward": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
+            "body_height_reward": body_height_reward * self.cfg.body_height_reward_scale * self.step_dt,
+            "lower_leg_reward": lower_leg_reward * self.cfg.lower_leg_reward_scale * self.step_dt,
+            "hip_penalty": hip_penalty * self.cfg.hip_penalty_scale * self.step_dt,
+            "feet_under_body_penalty": feet_under_body_penalty * self.cfg.feet_under_body_penalty_scale * self.step_dt,
         }
 
 
@@ -444,7 +467,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # change it so seperate gtime_outs
         
         died = self._robot.data.projected_gravity_b[:, 2] > 0.0
-        base_contact_time = self._contact_sensor.data.current_contact_time[:, self.base_id].squeeze(-1)
+        base_contact_time = self._contact_sensor.data.current_contact_time[:, self.base_ids].squeeze(-1)
         on_ground = base_contact_time > self.cfg.base_on_ground_time
         
         # Logging deaths/time outs per second

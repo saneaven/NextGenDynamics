@@ -10,7 +10,7 @@ from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 effort_mod = 2
 stiffness_mod = 0.7
-damping_mod = 1.0
+damping_mod = 3.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     joint_names_expr=[
         "joint_body_leg_hip_.*",

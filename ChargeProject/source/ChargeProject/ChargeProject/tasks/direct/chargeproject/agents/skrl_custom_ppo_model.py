@@ -39,12 +39,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             nn.ReLU(),
         )
 
-        #self.lstm = nn.LSTM(
-        #    input_size=512,
-        #    hidden_size=self.hidden_size,
-        #    num_layers=self.num_layers,  # Using a single LSTM layer
-        #    batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        #)
+        self.lstm = nn.LSTM(
+            input_size=512,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,  # Using a single LSTM layer
+            batch_first=True,    # Input/output tensors are (batch, seq, feature)
+        )
 
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
@@ -57,6 +57,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         self.value_layer = nn.Linear(128, 1)
         self.log_std_parameter = nn.Parameter(torch.full(size=(self.num_actions,), fill_value=init_log_std), requires_grad=True)
 
+        self._shared_output = None
+        
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=1.0)
@@ -64,8 +66,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     
     def get_specification(self):
-        return {} 
-    """{
+        return {
             "rnn": {
                 "sequence_length": self.sequence_length,
                 "sizes": [
@@ -73,7 +74,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                     (self.num_layers, self.num_envs, self.hidden_size),  # cx
                 ]
             }
-        }"""
+        }
     
     def act(self, inputs, role):
         if role == "policy":
@@ -82,24 +83,27 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             return DeterministicMixin.act(self, inputs, role)
 
     def compute(self, inputs, role=""):
-        states = inputs["states"]
-        #terminated = inputs.get("terminated", None)
-        #hidden_states = inputs["rnn"]
-        
-        encoded = self.encoder(states)
+        if self._shared_output is None:
+            states = inputs["states"]
+            terminated = inputs.get("terminated", None)
+            hidden_states = inputs["rnn"]
+            
+            encoded = self.encoder(states)
 
-        #rnn_output, rnn_dict = self.rnn_rollout(encoded, terminated, hidden_states)
+            rnn_output, rnn_dict = self.rnn_rollout(encoded, terminated, hidden_states)
 
-        net = self.net(encoded)
-        self._shared_output = net
+            net = self.net(rnn_output)
+            self._shared_output = net, rnn_dict
 
         if role == "policy":
             mean = self.policy_layer(net)
-            return mean, self.log_std_parameter, {}#rnn_dict
+            return mean, self.log_std_parameter, rnn_dict
 
         elif role == "value":
+            net, rnn_dict = self._shared_output
+            self._shared_output = None
             output = self.value_layer(net)
-            return output, {}#rnn_dict
+            return output, rnn_dict
 
     # === RNN rollout logic ===
     def rnn_rollout(self, states, terminated, hidden_states):
