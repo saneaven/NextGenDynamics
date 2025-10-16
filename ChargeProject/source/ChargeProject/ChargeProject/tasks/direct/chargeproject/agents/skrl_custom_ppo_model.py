@@ -22,29 +22,46 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             role="value"
         )
 
-        self.hidden_size = 512
-        self.sequence_length = 128
-        self.num_layers = 2
-
-        self.num_envs = num_envs
-        
-        obs_dim = self.observation_space.shape[0]
+        obs_dim = self.observation_space["observations"].shape[0]
+        height_dim = self.observation_space["height_data"].shape
+        assert height_dim == (16, 16), "Expected height_data to be of shape (16, 16)"
         act_dim = self.num_actions
+        self.num_envs = num_envs
 
-        self.encoder = nn.Sequential(
+
+        # Observation encoder
+        self.obs_encoder = nn.Sequential(
             nn.Linear(obs_dim, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(512, 256),
             nn.ReLU(),
         )
 
+        # Height_data encoder CNN (16x16 to 256)
+        self.height_encoder = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 8x8 -> 4x4
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
+            nn.ReLU(),
+            nn.Flatten(),  # 64 * 2 * 2 = 256
+            nn.Linear(256, 256),
+            nn.ReLU(),
+        )
+
+
+        self.num_layers = 2
+        self.hidden_size = 512
+        self.sequence_length = 128
+        """
         self.lstm = nn.LSTM(
             input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,  # Using a single LSTM layer
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        )
+        )"""
 
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
@@ -66,6 +83,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     
     def get_specification(self):
+        return {}
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -85,14 +103,18 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
     def compute(self, inputs, role=""):
         if self._shared_output is None:
             states = inputs["states"]
-            terminated = inputs.get("terminated", None)
-            hidden_states = inputs["rnn"]
             
-            encoded = self.encoder(states)
+            #terminated = inputs.get("terminated", None)
+            #hidden_states = inputs["rnn"]
+            rnn_dict = {}
+            
+            obs_encoded = self.obs_encoder(states)
+            height_encoded = self.height_encoder(states["height_data"].unsqueeze(1))
 
-            rnn_output, rnn_dict = self.rnn_rollout(encoded, terminated, hidden_states)
+            #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
+            #net = self.net(rnn_output)
 
-            net = self.net(rnn_output)
+            net = self.net(obs_encoded + height_encoded)
             self._shared_output = net, rnn_dict
 
         if role == "policy":

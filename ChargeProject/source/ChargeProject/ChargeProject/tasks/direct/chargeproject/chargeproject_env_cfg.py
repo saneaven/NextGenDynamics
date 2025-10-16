@@ -25,6 +25,8 @@ from .spider_robot import SPIDER_CFG
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 
+from gymnasium import spaces
+
 
 
 @configclass
@@ -41,7 +43,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #observation_space = 51
     #observation_space = 87 # without height scanner
     observation_space = 376 # with height scanner
-    state_space = 376
+    observation_space = spaces.Dict({
+        "observations": spaces.Box(-math.inf, math.inf, shape=(87,), dtype=float),
+        "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float)
+    })
+    state_space = 0 #idk why this is here
+
     # simulation
     decimation = 2
     sim: SimulationCfg = SimulationCfg(
@@ -89,13 +96,13 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         prim_path=f"/World/envs/env_.*/Robot/{base_name}",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.6]),  # type: ignore
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.5, 1.5]),  # type: ignore
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*3.5),
+        num_envs=int(1024),#*3.5),
         env_spacing=4.0, 
         replicate_physics=True
     )

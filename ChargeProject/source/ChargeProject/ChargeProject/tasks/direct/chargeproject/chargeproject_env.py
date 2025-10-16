@@ -196,10 +196,6 @@ class ChargeprojectEnv(DirectRLEnv):
     
     #@torch.compile(mode="reduce-overhead")
     def _get_observations_impl(self, height_scanner_data) -> dict:
-        height_data = (
-            height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5
-        ).clip(-1.0, 1.0)
-
         target_unit_vector, target_distance = self._get_relative_target_info(
             self._desired_pos
         )
@@ -219,6 +215,13 @@ class ChargeprojectEnv(DirectRLEnv):
             > 1.0
         )
         
+        print((height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5)[0])
+        height_data = (
+            height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5
+        ).clip(-1.0, 1.0)
+        # turn height data into a (16, 16) grid
+        height_data = height_data.view(self.num_envs, 16, 16)
+
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
             [
@@ -231,13 +234,15 @@ class ChargeprojectEnv(DirectRLEnv):
                 next_target_distance,
                 self._robot.data.joint_pos[:, self.dof_idx] - self._robot.data.default_joint_pos[:, self.dof_idx],
                 self._robot.data.joint_vel[:, self.dof_idx],
-                height_data,
                 self._actions,
             ],
             dim=-1,
         )
-        return obs
-    
+        return {
+            "observations": obs,
+            "height_data": height_data
+        }
+
     def _get_observations(self) -> dict:
         self._previous_actions = self._actions.clone()
 
@@ -245,7 +250,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         observations = self._get_observations_impl(height_scanner_data)
         # Need to clone because of torch.compile
-        observations = {"policy": observations.clone()}# for rl_games, "critic": observations.clone()}
+        observations = {"policy": observations}# for rl_games, "critic": observations.clone()}
         return observations
 
    #@torch.compile(mode="reduce-overhead")    
