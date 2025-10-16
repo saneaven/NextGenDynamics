@@ -148,10 +148,11 @@ class ChargeprojectEnv(DirectRLEnv):
         self.processed_actions = (
             self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
         )
+        
         """
         lower_joint_ids = self._robot.find_joints("joint_leg_middle_leg_lower_.*")[0]
         # For testing standing on 3 legs
-        if self.common_step_counter % 600 <= 100:
+        if self.common_step_counter % 300 <= 100:
             self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
             self.processed_actions[:, lower_joint_ids] -= 1
             #even_joints = self._robot.find_joints(".*0.*|.*2.*|.*4.*")[0]
@@ -332,6 +333,9 @@ class ChargeprojectEnv(DirectRLEnv):
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
         # joint acceleration
         joint_accel = torch.sum(torch.square(self._robot.data.joint_acc), dim=1)
+        # reward joint velocity
+        dof_vel = torch.sum(self._robot.data.joint_vel[:, self.dof_idx], dim=1)
+
         # action rate
         action_rate = torch.sum(
             torch.square(self._actions - self._previous_actions), dim=1
@@ -343,27 +347,29 @@ class ChargeprojectEnv(DirectRLEnv):
             :, self.feet_ids
         ]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_ids]
-        air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
-        air_time = torch.clamp(air_time, max=self.cfg.feet_air_time_max)
+        feet_air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
+        feet_air_time = torch.clamp(feet_air_time, max=self.cfg.feet_air_time_max)
         
         # undesired contacts
         undesired_contacts = torch.sum(self.is_contact[:, self.undesired_contact_body_ids], dim=1)
         # If 3 or more feet are in contact, consider it stable
-        stable_contact = torch.clamp(torch.sum(self.is_contact[:, self.feet_ids], dim=1), max=4.0)
+        stable_contact = torch.clamp(torch.sum(self.is_contact[:, self.feet_ids], dim=1), max=3.0)
 
         # flat orientation
         flat_orientation = torch.sum(
             torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1
         )
 
-        # Feet height penalty
+        # Body height reward
         base_height = self._robot.data.body_pos_w[:, self.base_ids, 2]  # [envs, 1]
         feet_height = self._robot.data.body_pos_w[:, self.feet_ids, 2] # [envs, num_feet]
 
         # Compute positive difference
         body_relative_height = base_height - feet_height
+        # Get lowest 3 feet
+        body_relative_height, _ = torch.topk(body_relative_height, 3, largest=False, dim=1)
 
-        # Mean or sum over feet (you can adjust depending on desired strength)
+        # Mean or sum over lowest 3 feet (you can adjust depending on desired strength)
         body_height_reward = torch.mean(body_relative_height, dim=1)  # [envs]
 
         # Lower leg upright penalty
@@ -397,6 +403,23 @@ class ChargeprojectEnv(DirectRLEnv):
         # Mean penalty per environment (across all feet)
         feet_under_body_penalty = torch.mean(under_body_depth * under_body_mask.float(), dim=1)
 
+
+        # Reward for stepping up/down
+        last_contact_time = self._contact_sensor.data.last_contact_time[:, self.feet_ids]
+        
+        # 1 if moving up, -1 if moving down, 0 if contacting
+        step_direction = torch.sign(self._robot.data.body_vel_w[:, self.feet_ids, 2]) * (~self.is_contact[:, self.feet_ids]).float()
+
+        # + if last_contact_time < cfg.step_up_time_end
+        going_up = torch.sign(self.cfg.step_up_time_end - last_contact_time)
+
+        step_values = step_direction * going_up
+
+        # Positive reward if foot moving up and last contact was recent
+        #   or if foot moving down and last contact was a while ago
+        step_reward = torch.sum(step_values, dim=1).clamp(max=3.0) # max 3 so it keeps 3 feet on ground
+
+
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
@@ -413,14 +436,15 @@ class ChargeprojectEnv(DirectRLEnv):
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
-            "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "feet_air_time": feet_air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
-            "desired_contacts": stable_contact * self.cfg.stable_contact_reward_scale * self.step_dt,
+            "desired_contacts": stable_contact * self.cfg.desired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "body_height_reward": body_height_reward * self.cfg.body_height_reward_scale * self.step_dt,
             "lower_leg_reward": lower_leg_reward * self.cfg.lower_leg_reward_scale * self.step_dt,
             "hip_penalty": hip_penalty * self.cfg.hip_penalty_scale * self.step_dt,
             "feet_under_body_penalty": feet_under_body_penalty * self.cfg.feet_under_body_penalty_scale * self.step_dt,
+            "step_reward": step_reward * self.cfg.step_reward_scale * self.step_dt,
         }
 
 

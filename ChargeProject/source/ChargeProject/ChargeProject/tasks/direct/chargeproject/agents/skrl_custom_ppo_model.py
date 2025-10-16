@@ -56,13 +56,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         self.num_layers = 2
         self.hidden_size = 512
         self.sequence_length = 128
-        """
         self.lstm = nn.LSTM(
             input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,  # Using a single LSTM layer
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        )"""
+        )
 
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
@@ -84,7 +83,6 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     
     def get_specification(self):
-        return {}
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -107,18 +105,21 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             observations = states["observations"]
             height_data = states["height_data"]
             
-            #terminated = inputs.get("terminated", None)
-            #hidden_states = inputs["rnn"]
+            terminated = inputs.get("terminated", None)
+            hidden_states = inputs["rnn"]
             rnn_dict = {}
             
+            # Encode observations
             obs_encoded = self.obs_encoder(observations)
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
+            encoded = torch.cat([obs_encoded, height_encoded], dim=-1)
 
-            #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
-            #net = self.net(rnn_output)
+            # LSTM
+            rnn_output, rnn_dict = self.rnn_rollout(encoded, terminated, hidden_states)
 
-            fused = torch.cat([obs_encoded, height_encoded], dim=-1)
-            net = self.net(fused)
+            # Final layers
+            net = self.net(rnn_output)
+
             self._shared_output = net, rnn_dict
 
         if role == "policy":
