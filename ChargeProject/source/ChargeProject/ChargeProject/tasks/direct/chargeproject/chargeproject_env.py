@@ -360,14 +360,17 @@ class ChargeprojectEnv(DirectRLEnv):
             torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1
         )
 
+
+        # EDITED MIDDLE OF RUN
         # Body height reward
         base_height = self._robot.data.body_pos_w[:, self.base_ids, 2]  # [envs, 1]
         feet_height = self._robot.data.body_pos_w[:, self.feet_ids, 2] # [envs, num_feet]
-
+        
+        # Get lowest 3 feet
+        feet_height, _ = torch.topk(feet_height, 3, largest=False, dim=1)
+        
         # Compute positive difference
         body_relative_height = base_height - feet_height
-        # Get lowest 3 feet
-        body_relative_height, _ = torch.topk(body_relative_height, 3, largest=False, dim=1)
 
         # Mean or sum over lowest 3 feet (you can adjust depending on desired strength)
         body_height_reward = torch.mean(body_relative_height, dim=1)  # [envs]
