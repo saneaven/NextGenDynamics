@@ -12,15 +12,13 @@ from isaaclab_assets.robots.spot import SPOT_CFG  # noqa
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
 from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg
-from isaaclab.assets import AssetBaseCfg
-import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
-from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg, PhysxCfg
-from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
-import isaaclab.terrains as terrain_gen
+
+from gymnasium import spaces
+
+
 
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
@@ -37,7 +35,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #observation_space = 87 # without height scanner
     # observation_space = 376 # with height scanner
     observation_space = 722 # with height scanner and lidar
-    state_space = 0
+    
+    observation_space = spaces.Dict({
+        "observations": spaces.Box(-math.inf, math.inf, shape=(87,), dtype=float),
+        "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float)
+    })
+    state_space = 0 #idk why this is here
     # simulation
     decimation = 2
     sim: SimulationCfg = SimulationCfg(
@@ -53,6 +56,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
     lower_leg_names = "leg_lower_.*"
+    hip_joint_names = "joint_body_leg_hip_.*"
 
     # Unitree Go2
     #base_name = "base"
@@ -82,7 +86,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1.0 #1  # meters
     time_out_per_target = 30.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    base_on_ground_time = 0.05 #seconds before death if base is on ground
+    base_on_ground_time = 100.05 #seconds before death if base is on ground
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1

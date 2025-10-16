@@ -356,7 +356,7 @@ class ChargeprojectEnv(DirectRLEnv):
         
         # body vertical acceleration
         acc_lin_w = self._robot.data.body_com_lin_acc_w
-        az_w = acc_lin_w[:, self.body_id, 2]
+        body_vertical_acceleration = acc_lin_w[:, self.body_id, 2]
 
         # check jump (all feet in the air at the same time)
         current_air_times = self._contact_sensor.data.current_air_time[:, self.feet_ids]
@@ -413,6 +413,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "speed_reward": horizontal_speed * self.cfg.speed_reward_scale * self.step_dt,
             "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
+            "body_vertical_acceleration": body_vertical_acceleration * self.cfg.body_vertical_acceleration_penalty_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,

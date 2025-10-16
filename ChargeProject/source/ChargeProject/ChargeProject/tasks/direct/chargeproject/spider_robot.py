@@ -14,7 +14,7 @@ SPIDER_PATH = FILE.parents[7] / "SpiderBot" / "spider" / "spider.usd"
 
 effort_mod = 2
 stiffness_mod = 0.7
-damping_mod = 1.0
+damping_mod = 3.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     joint_names_expr=[
         "joint_body_leg_hip_.*",
@@ -81,7 +81,7 @@ SPIDER_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.2),  # start above the ground
+        pos=(0.0, 0.0, 0.25),  # start above the ground
         # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=-55°
         joint_pos={
             "joint_body_leg_hip_.*": math.radians(0.0),
