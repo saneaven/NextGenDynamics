@@ -68,6 +68,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
     lower_leg_names = "leg_lower_.*"
+    lower_leg_joint_names = "joint_leg_middle_leg_lower_.*"
     hip_joint_names = "joint_body_leg_hip_.*"
 
     # Unitree Go2
@@ -165,11 +166,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     
     undesired_contact_reward_scale = -35 * 7
     desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80*2.5
-    body_height_reward_scale = 1000 * 2
-    lower_leg_reward_scale = 25 * 3
+    flat_orientation_reward_scale = -80*3
+    body_height_reward_scale = 1000 * 2 / 8
+    lower_leg_reward_scale = 300
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -6000
+    feet_under_body_penalty_scale = -6000 * 3 * 4
     body_penalty_radius = 0.2
 
     # rewards positive joint velocity when time from contact
