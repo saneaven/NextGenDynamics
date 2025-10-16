@@ -43,10 +43,21 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
-                    // "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
+                      "--checkpoint", "checkpoints/Spider/spiderbot_new_mj_v0.3.pt"
                     ],
-            "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
+            "program": "${workspaceFolder}/scripts/skrl/train.py",
+            //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Train Environment (Performance video)",
+            "type": "python",
+            "request": "launch",
+            "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
+                      "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
+                      "--checkpoint", "checkpoints/Spider/spiderbot_new_mj_v0.3.pt"
+                    ],
+            "program": "${workspaceFolder}/scripts/skrl/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
         },
@@ -56,9 +67,21 @@
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
-                    //   "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
+                      "--checkpoint", "checkpoints/Spider/spiderbot_new_mj_v0.3.pt"
+                    ],
+            "program": "${workspaceFolder}/scripts/skrl/train.py",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Train Environment (custom)",
+            "type": "python",
+            "request": "launch",
+            "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
+                      "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
+                    // "--checkpoint", "checkpoints/Spider/spiderbot_mj_v0.2.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
+            //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
             "console": "integratedTerminal"
         },
         {
