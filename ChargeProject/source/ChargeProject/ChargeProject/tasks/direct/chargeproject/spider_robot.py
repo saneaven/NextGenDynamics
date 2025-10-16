@@ -12,8 +12,9 @@ FILE = Path(__file__).resolve()
 SPIDER_PATH = FILE.parents[7] / "SpiderBot" / "spider" / "spider.usd"
 
 
-effort_mod = 8
-
+effort_mod = 2
+stiffness_mod = 0.7
+damping_mod = 1.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     joint_names_expr=[
         "joint_body_leg_hip_.*",
@@ -22,30 +23,36 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_middle_leg_lower_.*",
     ],
     effort_limit_sim={
-        "joint_body_leg_hip_.*": 16.0 * effort_mod,
-        "joint_leg_hip_leg_upper_.*": 30.0 * effort_mod,
-        "joint_leg_upper_leg_middle_.*": 22.0 * effort_mod,
-        "joint_leg_middle_leg_lower_.*": 15.0 * effort_mod,
+        "joint_body_leg_hip_.*": 208 * effort_mod,
+        "joint_leg_hip_leg_upper_.*": 256.0 * effort_mod,
+        "joint_leg_upper_leg_middle_.*": 176.0 * effort_mod,
+        "joint_leg_middle_leg_lower_.*": 150.0 * effort_mod,
     },
     velocity_limit_sim={
-        "joint_body_leg_hip_.*": 4.0,
-        "joint_leg_hip_leg_upper_.*": 4.0,
-        "joint_leg_upper_leg_middle_.*": 4.0,
-        "joint_leg_middle_leg_lower_.*": 4.0,
+        "joint_body_leg_hip_.*": 3.0,
+        "joint_leg_hip_leg_upper_.*": 3.0,
+        "joint_leg_upper_leg_middle_.*": 3.0,
+        "joint_leg_middle_leg_lower_.*": 3.0,
     },
     stiffness={
-        "joint_body_leg_hip_.*": 16.0 * effort_mod,
-        "joint_leg_hip_leg_upper_.*": 30.0 * effort_mod,
-        "joint_leg_upper_leg_middle_.*": 22.0 * effort_mod,
-        "joint_leg_middle_leg_lower_.*": 15.0 * effort_mod,
+        "joint_body_leg_hip_.*": 208 * effort_mod * stiffness_mod,
+        "joint_leg_hip_leg_upper_.*": 256.0 * effort_mod * stiffness_mod,
+        "joint_leg_upper_leg_middle_.*": 176.0 * effort_mod * stiffness_mod,
+        "joint_leg_middle_leg_lower_.*": 150.0 * effort_mod * stiffness_mod,
     },
     damping={
-        "joint_body_leg_hip_.*": 0.2,
-        "joint_leg_hip_leg_upper_.*": 0.6,
-        "joint_leg_upper_leg_middle_.*": 0.4,
-        "joint_leg_middle_leg_lower_.*": 0.2,
+        "joint_body_leg_hip_.*": 1.63 * math.sqrt(effort_mod) * damping_mod,
+        "joint_leg_hip_leg_upper_.*": 1.81 * math.sqrt(effort_mod) * damping_mod,
+        "joint_leg_upper_leg_middle_.*": 1.50 * math.sqrt(effort_mod) * damping_mod,
+        "joint_leg_middle_leg_lower_.*": 1.39 * math.sqrt(effort_mod) * damping_mod,
     },
-    armature = 0.001,
+    friction={
+        "joint_body_leg_hip_.*": 0.15,
+        "joint_leg_hip_leg_upper_.*": 0.15,
+        "joint_leg_upper_leg_middle_.*": 0.15,
+        "joint_leg_middle_leg_lower_.*": 0.075,
+    },
+    armature = 0.005,
 )
 
 
@@ -75,12 +82,12 @@ SPIDER_CFG = ArticulationCfg(
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.2),  # start above the ground
-        # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=55°
+        # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=-55°
         joint_pos={
             "joint_body_leg_hip_.*": math.radians(0.0),
-            "joint_leg_hip_leg_upper_.*": math.radians(30.0),
-            "joint_leg_upper_leg_middle_.*": math.radians(-65.0),
-            "joint_leg_middle_leg_lower_.*": math.radians(-55.0),
+            "joint_leg_hip_leg_upper_.*": math.radians(10.0),
+            "joint_leg_upper_leg_middle_.*": math.radians(-50.0),
+            "joint_leg_middle_leg_lower_.*": math.radians(-50.0),
         },
     ),
     actuators={

@@ -6,7 +6,7 @@ from skrl.models.torch import Model, GaussianMixin, DeterministicMixin
 
 
 class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device, num_envs):
+    def __init__(self, observation_space, action_space, device, num_envs, init_log_std=0.0):
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(
             self,
@@ -22,39 +22,68 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             role="value"
         )
 
-        self.hidden_size = 512
-        self.sequence_length = 64
-        self.num_layers = 2
-
+        obs_dim = self.observation_space["observations"].shape[0]
+        height_dim = self.observation_space["height_data"].shape
+        assert height_dim == (16, 16), "Expected height_data to be of shape (16, 16)"
+        act_dim = self.num_actions
         self.num_envs = num_envs
 
-        self.net1 = nn.Sequential(
-            nn.Linear(in_features=self.observation_space.shape[0], out_features=512),
-            nn.ELU(),
+
+        # Observation encoder
+        self.obs_encoder = nn.Sequential(
+            nn.Linear(obs_dim, 512),
+            nn.LayerNorm(512),
+            nn.ReLU(),
+            nn.Linear(512, 256),
+            nn.ReLU(),
         )
 
+        # Height_data encoder CNN (16x16 to 256)
+        self.height_encoder = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 8x8 -> 4x4
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
+            nn.ReLU(),
+            nn.Flatten(),  # 64 * 2 * 2 = 256
+            nn.Linear(256, 256),
+            nn.ReLU(),
+        )
+
+
+        self.num_layers = 2
+        self.hidden_size = 512
+        self.sequence_length = 128
+        """
         self.lstm = nn.LSTM(
             input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,  # Using a single LSTM layer
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
+        )"""
+
+        self.net = nn.Sequential(
+            nn.Linear(self.hidden_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
         )
 
-        self.net2 = nn.Sequential(
-            nn.Linear(in_features=self.hidden_size, out_features=256),
-            nn.ELU(),
-            nn.LazyLinear(out_features=256),
-            nn.ELU(),
-            nn.LazyLinear(out_features=128),
-            nn.ELU(),
-        )
+        self.policy_layer = nn.Linear(128, act_dim)
+        self.value_layer = nn.Linear(128, 1)
+        self.log_std_parameter = nn.Parameter(torch.full(size=(self.num_actions,), fill_value=init_log_std), requires_grad=True)
 
-        self.policy_layer = nn.LazyLinear(out_features=self.num_actions)
-        self.log_std_parameter = nn.Parameter(torch.full(size=(self.num_actions,), fill_value=0.0), requires_grad=True)
-        self.value_layer = nn.LazyLinear(out_features=1)
+        self._shared_output = None
+        
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, gain=1.0)
+                nn.init.constant_(m.bias, 0)
 
     
     def get_specification(self):
+        return {}
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -72,41 +101,46 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             return DeterministicMixin.act(self, inputs, role)
 
     def compute(self, inputs, role=""):
-        states = inputs["states"]
-        terminated = inputs.get("terminated", None)
-        hidden_states = inputs["rnn"]
+        if self._shared_output is None:
+            states = inputs["states"]
+            
+            #terminated = inputs.get("terminated", None)
+            #hidden_states = inputs["rnn"]
+            rnn_dict = {}
+            
+            obs_encoded = self.obs_encoder(states)
+            height_encoded = self.height_encoder(states["height_data"].unsqueeze(1))
 
-        encoded_states = self.net1(states)
+            #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
+            #net = self.net(rnn_output)
 
-        # hidden_states = [hx, cx]
-        rnn_output, rnn_dict = self.rnn_rollout(encoded_states, terminated, hidden_states)
-
-        net = self.net2(rnn_output)
-        self._shared_output = net
+            net = self.net(obs_encoded + height_encoded)
+            self._shared_output = net, rnn_dict
 
         if role == "policy":
             mean = self.policy_layer(net)
             return mean, self.log_std_parameter, rnn_dict
 
         elif role == "value":
+            net, rnn_dict = self._shared_output
+            self._shared_output = None
             output = self.value_layer(net)
             return output, rnn_dict
 
     # === RNN rollout logic ===
     def rnn_rollout(self, states, terminated, hidden_states):
+        #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
         if self.training:
             # reshape to (batch, seq, features)
             rnn_input = states.view(-1, self.sequence_length, states.shape[-1])
             
             h, c = hidden_states
-
             h = h.view(
                 self.num_layers, -1, self.sequence_length, h.shape[-1]
             )[:, :, 0, :].contiguous()
             c = c.view(
                 self.num_layers, -1, self.sequence_length, c.shape[-1]
             )[:, :, 0, :].contiguous()
-
             hidden_states = (h.contiguous(), c.contiguous())
 
             if terminated is not None and torch.any(terminated):
@@ -115,9 +149,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 terminated = terminated.view(-1, self.sequence_length)
                 indexes = (
                     [0]
-                    + (
-                        terminated[:, :-1].any(dim=0).nonzero(as_tuple=True)[0] + 1
-                    ).tolist()
+                    + (terminated[:, :-1].any(dim=0).nonzero(as_tuple=True)[0] + 1).tolist()
                     + [self.sequence_length]
                 )
                 for i in range(len(indexes) - 1):
@@ -135,6 +167,11 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         else:
             # evaluation mode: one step at a time
             rnn_input = states.view(-1, 1, states.shape[-1])
+            # Make h, c contiguous
+            h, c = hidden_states
+            h = h.contiguous()
+            c = c.contiguous()
+            hidden_states = (h, c)
             rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
 
         # flatten batch + sequence

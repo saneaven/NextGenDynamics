@@ -36,7 +36,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     #observation_space = 51
     #observation_space = 87 # without height scanner
     # observation_space = 376 # with height scanner
-    observation_space = 691 # with height scanner and lidar
+    observation_space = 722 # with height scanner and lidar
     state_space = 0
     # simulation
     decimation = 2
@@ -72,7 +72,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     
     # scene
     scene: MySceneCfg = MySceneCfg(
-        num_envs=512,  # 1024
+        num_envs=1024,  # 1024
         env_spacing=4.0,
         replicate_physics=True
     )
@@ -82,7 +82,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1.0 #1  # meters
     time_out_per_target = 30.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    death_velocity_threshold = 20000.0 # m/s
+    base_on_ground_time = 0.05 #seconds before death if base is on ground
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -90,31 +90,33 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 1# 0.2
+    action_scale = 0.7
     
-    progress_reward_scale = 50.0 * 20.0 # linear version ish
+    progress_reward_scale = 50.0 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 0 # 10.0 #2#6
+    velocity_alignment_reward_scale = 2.0 # 10.0 #2#6
     # Multiplied by targets hit reward
     reach_target_reward_scale = 500.0
-    forward_vel_reward_scale = 0.0#1.2#/30
+    forward_vel_reward_scale = 0.0 #1.2#/30
     life_time_reward_scale = 0.001
     time_penalty_scale = 0.0 #-5
-    death_penalty_scale = -5000.0 # -500
-    still_penalty_scale = -5.0 * 2.0
-    speed_reward_scale = 0.5
+    death_penalty_scale = -1000.0 # -5000.0 # -500.0
+    still_penalty_scale = -5.0
+    speed_reward_scale = 1.2
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     z_vel_penalty_scale = -0.001
-    jump_penalty_scale = -1.0
+    jump_penalty_scale = -0.5
     ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -1e-06
+    joint_torque_reward_scale = -1e-07
     joint_accel_reward_scale = -5.0e-09 # idk this works # -1.5e-07
     dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.001
+    body_angular_velocity_penalty_scale = -1.0
+    body_vertical_acceleration_penalty_scale = -1.0
     feet_air_time_reward_scale = 1.0
-    undesired_contact_reward_scale = -0.1 ## -0.75
-    flat_orientation_reward_scale = -1.2
+    undesired_contact_reward_scale = -1.2 ## -0.75
+    flat_orientation_reward_scale = -1.3
