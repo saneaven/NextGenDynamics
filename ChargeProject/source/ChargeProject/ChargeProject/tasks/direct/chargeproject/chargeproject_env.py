@@ -215,7 +215,6 @@ class ChargeprojectEnv(DirectRLEnv):
             > 1.0
         )
         
-        print((height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5)[0])
         height_data = (
             height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5
         ).clip(-1.0, 1.0)

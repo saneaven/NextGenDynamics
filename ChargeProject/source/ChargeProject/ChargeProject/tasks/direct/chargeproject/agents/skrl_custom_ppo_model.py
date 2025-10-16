@@ -3,6 +3,7 @@ import torch.nn as nn
 
 # Assuming these are imported from your RL library (e.g., skrl)
 from skrl.models.torch import Model, GaussianMixin, DeterministicMixin
+from skrl.utils.spaces.torch import unflatten_tensorized_space
 
 
 class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
@@ -102,19 +103,22 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     def compute(self, inputs, role=""):
         if self._shared_output is None:
-            states = inputs["states"]
+            states = unflatten_tensorized_space(self.observation_space, inputs["states"])
+            observations = states["observations"]
+            height_data = states["height_data"]
             
             #terminated = inputs.get("terminated", None)
             #hidden_states = inputs["rnn"]
             rnn_dict = {}
             
-            obs_encoded = self.obs_encoder(states)
-            height_encoded = self.height_encoder(states["height_data"].unsqueeze(1))
+            obs_encoded = self.obs_encoder(observations)
+            height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
 
             #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
             #net = self.net(rnn_output)
 
-            net = self.net(obs_encoded + height_encoded)
+            fused = torch.cat([obs_encoded, height_encoded], dim=-1)
+            net = self.net(fused)
             self._shared_output = net, rnn_dict
 
         if role == "policy":
