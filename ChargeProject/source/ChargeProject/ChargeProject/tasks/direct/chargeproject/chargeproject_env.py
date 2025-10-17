@@ -294,7 +294,6 @@ class ChargeprojectEnv(DirectRLEnv):
             0.5 + self._targets_reached[reached_target_ids] * 0.5
         )
 
-        time_penalty = torch.ones(self.num_envs, device=self.device)
 
         # died if gravity is near positive (flipped over)
         died = self._robot.data.projected_gravity_b[:, 2] > 0.0
@@ -302,13 +301,6 @@ class ChargeprojectEnv(DirectRLEnv):
         on_ground = base_contact_time > self.cfg.base_on_ground_time
         death_penalty = died.float() + on_ground.float()
 
-        # Reward for just moving forward in the robot's frame (sqrt)
-        # forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
-        #                   * torch.pow(torch.abs(self._robot.data.root_lin_vel_b[:, 0]), 1.0/2.0)
-        # forward_vel_reward = torch.sign(self._robot.data.root_lin_vel_b[:, 0]) \
-        #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
-        forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
-        
         # Penalty for staying still (low horizontal velocity/rotating in the robot's frame)
         horizontal_speed = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
         yaw_speed = torch.abs(self._robot.data.root_ang_vel_b[:, 2])
@@ -324,7 +316,7 @@ class ChargeprojectEnv(DirectRLEnv):
         # yaw_rate_error = torch.square(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
         # yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
         # z velocity tracking
-        z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
+        #z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
         # angular velocity x/y
         ang_vel_error = torch.sum(
             torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1
@@ -333,15 +325,12 @@ class ChargeprojectEnv(DirectRLEnv):
         joint_torques = torch.sum(torch.square(self._robot.data.applied_torque[:, self.dof_idx]), dim=1)
         # joint acceleration
         joint_accel = torch.sum(torch.square(self._robot.data.joint_acc[:, self.dof_idx]), dim=1)
-        # reward joint velocity
-        dof_vel = torch.sum(self._robot.data.joint_vel[:, self.dof_idx], dim=1)
 
         # action rate
         action_rate = torch.sum(
             torch.square(self._actions - self._previous_actions), dim=1
         )
-        # joint velocity
-        # dof_vel = torch.sum(torch.square(self._robot.data.joint_vel), dim=1)
+        
         # feet air time
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[
             :, self.feet_contact_ids
@@ -411,36 +400,39 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Reward for stepping up/down
         last_contact_time = self._contact_sensor.data.last_contact_time[:, self.feet_contact_ids]
-        
+        feet_in_contact = self.is_contact[:, self.feet_contact_ids]
+        non_contact_count = torch.sum(~feet_in_contact, dim=1).clamp_min(1.0)  # at least 1 to avoid div by 0
         # 1 if moving up, -1 if moving down, 0 if contacting
-        step_direction = self._robot.data.body_vel_w[:, self.feet_body_ids, 2] * (~self.is_contact[:, self.feet_contact_ids]).float()
+        step_direction = self._robot.data.body_vel_w[:, self.feet_body_ids, 2] * (~feet_in_contact).float()
 
         # + if last_contact_time < cfg.step_up_time_end
-        going_up = torch.sign(self.cfg.step_up_time_end - last_contact_time)
+        target_dir = torch.sign(self.cfg.step_up_time_end - last_contact_time)
 
-        step_values = step_direction * going_up
-
+        step_values = step_direction * target_dir
+        
         # Positive reward if foot moving up and last contact was recent
         #   or if foot moving down and last contact was a while ago
-        step_reward = torch.sum(step_values, dim=1).clamp(max=3.0) # max 3 so it keeps 3 feet on ground
+        step_reward = torch.sum(step_values, dim=1) / non_contact_count
 
+        # Penalty for leg staying up too long
+        step_length_penalty = torch.sum(
+            torch.clamp(last_contact_time - self.cfg.step_penalty_start, min=0.0), dim=1
+        )
+        
 
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
             "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
-            "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
             "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
-            "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
-            "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            #"lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
-            # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "feet_air_time": feet_air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "desired_contacts": stable_contact * self.cfg.desired_contact_reward_scale * self.step_dt,
@@ -450,6 +442,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "hip_penalty": hip_penalty * self.cfg.hip_penalty_scale * self.step_dt,
             "feet_under_body_penalty": feet_under_body_penalty * self.cfg.feet_under_body_penalty_scale * self.step_dt,
             "step_reward": step_reward * self.cfg.step_reward_scale * self.step_dt,
+            "step_length_penalty": step_length_penalty * self.cfg.step_length_penalty_scale * self.step_dt,
         }
 
 

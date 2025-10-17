@@ -52,6 +52,13 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             nn.ReLU(),
         )
 
+        # For fusion of both encoders
+        self.fusion = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.LayerNorm(512),
+            nn.ReLU(),
+        )
+
 
         self.num_layers = 2
         self.hidden_size = 512
@@ -114,11 +121,14 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
             encoded = torch.cat([obs_encoded, height_encoded], dim=-1)
 
+            # Fusion
+            fused = self.fusion(encoded)
+
             # LSTM
-            rnn_output, rnn_dict = self.rnn_rollout(encoded, terminated, hidden_states)
+            #rnn_output, rnn_dict = self.rnn_rollout(fused, terminated, hidden_states)
 
             # Final layers
-            net = self.net(rnn_output)
+            net = self.net(fused)
 
             self._shared_output = net, rnn_dict
 

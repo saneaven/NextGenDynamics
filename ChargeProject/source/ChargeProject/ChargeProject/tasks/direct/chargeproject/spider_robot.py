@@ -8,7 +8,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
-effort_mod = 2
+effort_mod = 0.15
 stiffness_mod = 0.7
 damping_mod = 1.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
@@ -22,7 +22,7 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_body_leg_hip_.*": 208 * effort_mod,
         "joint_leg_hip_leg_upper_.*": 256.0 * effort_mod,
         "joint_leg_upper_leg_middle_.*": 176.0 * effort_mod,
-        "joint_leg_middle_leg_lower_.*": 150.0 * effort_mod,
+        "joint_leg_middle_leg_lower_.*": 125.0 * effort_mod,
     },
     velocity_limit_sim={
         "joint_body_leg_hip_.*": 3.0,
@@ -34,7 +34,7 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_body_leg_hip_.*": 208 * effort_mod * stiffness_mod,
         "joint_leg_hip_leg_upper_.*": 256.0 * effort_mod * stiffness_mod,
         "joint_leg_upper_leg_middle_.*": 176.0 * effort_mod * stiffness_mod,
-        "joint_leg_middle_leg_lower_.*": 150.0 * effort_mod * stiffness_mod,
+        "joint_leg_middle_leg_lower_.*": 125.0 * effort_mod * stiffness_mod,
     },
     damping={
         "joint_body_leg_hip_.*": 1.63 * math.sqrt(effort_mod) * damping_mod,

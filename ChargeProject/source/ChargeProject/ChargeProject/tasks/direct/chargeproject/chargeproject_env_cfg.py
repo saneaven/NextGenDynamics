@@ -103,7 +103,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*6.5),
+        num_envs=int(1024*6),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -146,7 +146,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     progress_pow = 1
     distance_lookback = 6
 
-    velocity_alignment_reward_scale = 80 * 5 # push for doing something
+    velocity_alignment_reward_scale = 80 * 4 # push for doing something
     # Multiplied by targets hit reward
     reach_target_reward_scale = 500
     forward_vel_reward_scale = 0
@@ -155,25 +155,27 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     still_penalty_scale = -20
     z_vel_reward_scale = 0
     ang_vel_reward_scale = -1.35
-    joint_torque_reward_scale = -0.00003 * 4
-    joint_accel_reward_scale = -8.0e-08 * 3
+    joint_torque_reward_scale = -0.00003 * 2.5
+    joint_accel_reward_scale = -8.0e-08 * 3 * 1000
     dof_vel_reward_scale = 0
-    action_rate_reward_scale = -1.2 * 5
+    action_rate_reward_scale = -1.2 / 3
 
-    feet_air_time_reward_scale = 90 * 4
-    feet_air_time_target = 0.75
-    feet_air_time_max = 1.1
+    feet_air_time_reward_scale = 90 * 2
+    feet_air_time_target = 0.7
+    feet_air_time_max = 0.9
     
-    undesired_contact_reward_scale = -35 * 7
+    undesired_contact_reward_scale = -35 * 10
     desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80*3
-    body_height_reward_scale = 1000 * 2 / 8
-    lower_leg_reward_scale = 300
+    flat_orientation_reward_scale = -80 * 3
+    body_height_reward_scale = 1000 * 2 / 3
+    lower_leg_reward_scale = 300 * 3
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -6000 * 3 * 4
+    feet_under_body_penalty_scale = -6000 * 3 * 8
     body_penalty_radius = 0.2
 
     # rewards positive joint velocity when time from contact
-    step_reward_scale = 200
-    step_up_time_end = 0.7
-
+    step_reward_scale = 500
+    step_up_time_end = 0.6
+    # linear scale of penalty if leg doesn't step in this time
+    step_length_penalty_scale = -10000
+    step_penalty_start = 1.2
