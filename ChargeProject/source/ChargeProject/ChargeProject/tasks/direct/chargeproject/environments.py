@@ -14,6 +14,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 
+
 base_name = "body"
 
 ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
@@ -77,10 +78,10 @@ ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerato
     },
 )
 
-VERTICAL_SCALE = 0.0000075
+VERTICAL_SCALE = 0.00001
 
 MICRO_TERRAIN_STEP = VERTICAL_SCALE
-MICRO_TERRAIN_SCALE = VERTICAL_SCALE * 10000.0
+MICRO_TERRAIN_SCALE = VERTICAL_SCALE * 15000.0
 
 MACRO_TERRAIN_STEP = VERTICAL_SCALE * 10000.0
 MACRO_TERRAIN_SCALE = VERTICAL_SCALE * 32767.0
@@ -105,7 +106,7 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
             micro_downsampled_scale=0.1,
             flat_patch_sampling={
                 "robot_spawn": terrain_gen.FlatPatchSamplingCfg(
-                    num_patches=1024, patch_radius=1.2, max_height_diff=0.15
+                    num_patches=int(1024*4), patch_radius=1.2, max_height_diff=0.15
                 ),
             },
             size=(128., 128.)
@@ -121,7 +122,6 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
         # ),
     },
 )
-
 
 
 @configclass
@@ -162,7 +162,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path=f"/World/envs/env_.*/Robot/{base_name}",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.6]),  # type: ignore
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.5, 1.5]), # 16x16 rays   # type: ignore 
         debug_vis=False,
         mesh_prim_paths=["/World/terrain"],
     )
@@ -174,7 +174,7 @@ class MySceneCfg(InteractiveSceneCfg):
         mesh_prim_paths=["/World/terrain"],
         ray_alignment="yaw",
         pattern_cfg=patterns.LidarPatternCfg(
-            channels=3, vertical_fov_range=(-30.0, 30.0), horizontal_fov_range=(-180.0, 180.0), horizontal_res=10.0
+            channels=12, vertical_fov_range=(-60.0, 60.0), horizontal_fov_range=(-180.0, 180.0), horizontal_res=10.0 # 35 x 12 rays   # type: ignore
         )
     )
 

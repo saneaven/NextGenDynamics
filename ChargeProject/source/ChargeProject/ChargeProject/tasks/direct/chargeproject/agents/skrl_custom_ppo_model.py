@@ -25,44 +25,56 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         obs_dim = self.observation_space["observations"].shape[0]
         height_dim = self.observation_space["height_data"].shape
+        lidar_dim = self.observation_space["lidar_data"].shape
         assert height_dim == (16, 16), "Expected height_data to be of shape (16, 16)"
+        assert lidar_dim == (35, 12, 3), "Expected lidar_data to be of shape (35, 12, 3)"
         act_dim = self.num_actions
         self.num_envs = num_envs
 
 
         # Observation encoder
         self.obs_encoder = nn.Sequential(
-            nn.Linear(obs_dim, 512),
-            nn.LayerNorm(512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(obs_dim, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
         )
 
         # Height_data encoder CNN (16x16 to 256)
         self.height_encoder = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 8x8 -> 4x4
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1), # 8x8 -> 4x4
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
+            nn.Flatten(),  # 32 * 2 * 2 = 128
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Flatten(),  # 64 * 2 * 2 = 256
-            nn.Linear(256, 256),
+        )
+        # Lidar_data encoder MLP (35x12x3 to 128)
+        self.lidar_encoder = nn.Sequential(
+            nn.Conv3d(1, 8, kernel_size=3, stride=2, padding=1), # 35x12x3 -> 18x6x2 ceil(in/stride)
+            nn.ReLU(),
+            nn.Conv3d(8, 16, kernel_size=3, stride=2, padding=1), # 18x6x3 -> 9x3x1
+            nn.ReLU(),
+            nn.Conv3d(16, 32, kernel_size=3, stride=2, padding=1), # 9x3x1 -> 5x2x1
+            nn.ReLU(),
+            nn.Conv3d(32, 64, kernel_size=3, stride=2, padding=1), # 5x2x1 -> 3x1x1
+            nn.ReLU(),
+            nn.Flatten(), # 64 * 3 * 1 * 1 = 192
+            nn.Linear(192, 128),
             nn.ReLU(),
         )
 
-
         self.num_layers = 2
         self.hidden_size = 512
-        self.sequence_length = 128
-        """
+        self.sequence_length = 64
+
         self.lstm = nn.LSTM(
             input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,  # Using a single LSTM layer
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        )"""
+        )
 
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
@@ -106,6 +118,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             states = unflatten_tensorized_space(self.observation_space, inputs["states"])
             observations = states["observations"]
             height_data = states["height_data"]
+            lidar_data = states["lidar_data"]
             
             #terminated = inputs.get("terminated", None)
             #hidden_states = inputs["rnn"]
@@ -113,12 +126,14 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             
             obs_encoded = self.obs_encoder(observations)
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
+            lidar_encoded = self.lidar_encoder(lidar_data.unsqueeze(1))  # Add channel dimension
 
             #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
             #net = self.net(rnn_output)
 
-            fused = torch.cat([obs_encoded, height_encoded], dim=-1)
-            net = self.net(fused)
+            fused = torch.cat([obs_encoded, height_encoded, lidar_encoded], dim=-1)
+            lstm_output, (h_n, c_n) = self.lstm(fused)
+            net = self.net(lstm_output)
             self._shared_output = net, rnn_dict
 
         if role == "policy":

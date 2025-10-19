@@ -4,12 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-from requests import patch
-from sympy import prime
-from trimesh import Trimesh
-from isaaclab_assets.robots.anymal import ANYMAL_C_CFG  # noqa isort: skip
-from isaaclab_assets.robots.spot import SPOT_CFG  # noqa
-from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
 from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -17,7 +11,6 @@ from isaaclab.sim import SimulationCfg, PhysxCfg
 from isaaclab.utils import configclass
 
 from gymnasium import spaces
-
 
 
 @configclass
@@ -37,8 +30,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     observation_space = 722 # with height scanner and lidar
     
     observation_space = spaces.Dict({
-        "observations": spaces.Box(-math.inf, math.inf, shape=(87,), dtype=float),
-        "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float)
+        "observations": spaces.Box(-math.inf, math.inf, shape=(118,), dtype=float),
+        "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float),
+        "lidar_data": spaces.Box(-math.inf, math.inf, shape=(35, 12, 3), dtype=float)
     })
     state_space = 0 #idk why this is here
     # simulation
@@ -76,7 +70,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     
     # scene
     scene: MySceneCfg = MySceneCfg(
-        num_envs=1024,  # 1024
+        num_envs= int(1024 * 1.5),  # 1024
         env_spacing=4.0,
         replicate_physics=True
     )
@@ -96,31 +90,31 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.7
     
-    progress_reward_scale = 50.0 # linear version ish
+    progress_reward_scale = 50.0 * 10.0 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 2.0 # 10.0 #2#6
+    velocity_alignment_reward_scale = 12.0 * 10.0 # 10.0 #2#6
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 500.0
-    forward_vel_reward_scale = 0.0 #1.2#/30
-    life_time_reward_scale = 0.001
-    time_penalty_scale = 0.0 #-5
+    reach_target_reward_scale = 750.0
+    # forward_vel_reward_scale = 0.0 #1.2#/30
+    life_time_reward_scale = 0.002
+    # time_penalty_scale = 0.0 #-5
     death_penalty_scale = -1000.0 # -5000.0 # -500.0
-    still_penalty_scale = -5.0
-    speed_reward_scale = 1.2
+    # still_penalty_scale = -5.0 * 4.0
+    speed_reward_scale = 1.0 * 5.0
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
-    z_vel_penalty_scale = -0.001
-    jump_penalty_scale = -0.5
-    ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -1e-07
-    joint_accel_reward_scale = -5.0e-09 # idk this works # -1.5e-07
-    dof_vel_reward_scale = 0
-    action_rate_reward_scale = -0.001
-    body_angular_velocity_penalty_scale = -1.0
-    body_vertical_acceleration_penalty_scale = -1.0
-    feet_air_time_reward_scale = 1.0
-    undesired_contact_reward_scale = -1.2 ## -0.75
-    flat_orientation_reward_scale = -1.3
+    # z_vel_penalty_scale = -0.001
+    jump_penalty_scale = -0.5 * 5.0
+    # ang_vel_reward_scale = -0.0375
+    joint_torque_reward_scale = -1.0e-07
+    joint_accel_reward_scale = -1.0e-08 # idk this works # -1.5e-07
+    # dof_vel_reward_scale = 0
+    action_rate_reward_scale = -0.0002
+    body_angular_velocity_penalty_scale = -1.5 * 5.5
+    body_vertical_acceleration_penalty_scale = -0.1 * 5.5
+    # feet_air_time_reward_scale = 1.0
+    undesired_contact_reward_scale = -1.5 ## -0.75
+    flat_orientation_reward_scale = -1.3 * 1.2
