@@ -8,7 +8,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
-effort_mod = 0.15
+effort_mod = 0.025
 stiffness_mod = 0.7
 damping_mod = 1.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
@@ -50,7 +50,8 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     },
     armature = 0.005,
 )
-
+# print args in SPIDER_ACTUATOR_CFG
+print(SPIDER_ACTUATOR_CFG)
 
 SPIDER_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(

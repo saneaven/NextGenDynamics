@@ -90,6 +90,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     
     def get_specification(self):
+        return {}
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -112,8 +113,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             observations = states["observations"]
             height_data = states["height_data"]
             
-            terminated = inputs.get("terminated", None)
-            hidden_states = inputs["rnn"]
+            #terminated = inputs.get("terminated", None)
+            #hidden_states = inputs["rnn"]
             rnn_dict = {}
             
             # Encode observations

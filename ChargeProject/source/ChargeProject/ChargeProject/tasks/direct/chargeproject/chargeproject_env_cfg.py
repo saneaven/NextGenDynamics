@@ -55,7 +55,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
             #gpu_collision_stack_size = 2**27,
-            #gpu_max_rigid_patch_count = 2**19
+            gpu_max_rigid_patch_count = 2**19
         )
     )
     # robot(s)
@@ -67,6 +67,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     base_name = "body"
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
+    middle_leg_joint_names = "joint_leg_upper_leg_middle_.*"
     lower_leg_names = "leg_lower_.*"
     lower_leg_joint_names = "joint_leg_middle_leg_lower_.*"
     hip_joint_names = "joint_body_leg_hip_.*"
@@ -103,7 +104,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*6),
+        num_envs=int(1024*4),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -130,9 +131,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
     success_tolerance = 1 # 0.25  # meters
-    time_out_per_target = 25 #5.0  # seconds
+    time_out_per_target = 10 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    base_on_ground_time = 100.05 #seconds before death if base is on ground
+    base_on_ground_time = 0.2 #seconds before death if base is on ground
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -142,40 +143,37 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.7
     
-    progress_reward_scale = 2500 * 5 # push for doing something
-    progress_pow = 1
-    distance_lookback = 6
+    progress_reward_scale = 2500 * 5 # / 2# /2 for 1.4 pow
+    progress_pow = 1#.4
+    distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 4 # push for doing something
+    velocity_alignment_reward_scale = 80 # push for doing something
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 500
-    forward_vel_reward_scale = 0
-    time_penalty_scale = 0
+    reach_target_reward_scale = 1000
     death_penalty_scale = -1000
-    still_penalty_scale = -20
+    movement_reward_scale = 1500
     z_vel_reward_scale = 0
-    ang_vel_reward_scale = -1.35
-    joint_torque_reward_scale = -0.00003 * 2.5
-    joint_accel_reward_scale = -8.0e-08 * 3 * 1000
-    dof_vel_reward_scale = 0
-    action_rate_reward_scale = -1.2 / 3
-
-    feet_air_time_reward_scale = 90 * 2
-    feet_air_time_target = 0.7
-    feet_air_time_max = 0.9
+    ang_vel_reward_scale = -1.35 * 2
+    joint_torque_reward_scale = -0.00003 * 2.5 * 100 * 2
+    joint_accel_reward_scale = -8.0e-08 * 3 * 100
+    dof_vel_reward_scale = -0.0006 * 3 * 10
+    action_rate_reward_scale = -1.2 / 2
     
-    undesired_contact_reward_scale = -35 * 10
+    undesired_contact_reward_scale = -35 * 6
     desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80 * 3
-    body_height_reward_scale = 1000 * 2 / 3
-    lower_leg_reward_scale = 300 * 3
+    flat_orientation_reward_scale = -80 * 5 * 2
+    body_height_reward_scale = 100
+    lower_leg_reward_scale = 300
     hip_penalty_scale = -30
     feet_under_body_penalty_scale = -6000 * 3 * 8
     body_penalty_radius = 0.2
 
     # rewards positive joint velocity when time from contact
-    step_reward_scale = 500
-    step_up_time_end = 0.6
+    step_reward_scale = 300
+    step_up_time_end = 0.45
     # linear scale of penalty if leg doesn't step in this time
-    step_length_penalty_scale = -10000
-    step_penalty_start = 1.2
+    step_length_penalty_scale = -150
+    step_penalty_start = 1.1
+    step_penalty_cap = 2
+
+    leg_angle_penalty_scale = -2000
