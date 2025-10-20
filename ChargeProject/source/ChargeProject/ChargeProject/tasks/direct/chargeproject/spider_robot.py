@@ -8,7 +8,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
-effort_mod = 0.025
+effort_mod = 0.1 # 0.025
 stiffness_mod = 0.7
 damping_mod = 1.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
@@ -43,10 +43,10 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_middle_leg_lower_.*": 1.39 * math.sqrt(effort_mod) * damping_mod,
     },
     friction={
-        "joint_body_leg_hip_.*": 0.15,
-        "joint_leg_hip_leg_upper_.*": 0.15,
-        "joint_leg_upper_leg_middle_.*": 0.15,
-        "joint_leg_middle_leg_lower_.*": 0.075,
+        "joint_body_leg_hip_.*": 0.2,
+        "joint_leg_hip_leg_upper_.*": 0.2,
+        "joint_leg_upper_leg_middle_.*": 0.2,
+        "joint_leg_middle_leg_lower_.*": 0.1,
     },
     armature = 0.005,
 )
@@ -83,9 +83,9 @@ SPIDER_CFG = ArticulationCfg(
         # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=-55°
         joint_pos={
             "joint_body_leg_hip_.*": math.radians(0.0),
-            "joint_leg_hip_leg_upper_.*": math.radians(10.0),
-            "joint_leg_upper_leg_middle_.*": math.radians(-50.0),
-            "joint_leg_middle_leg_lower_.*": math.radians(-50.0),
+            "joint_leg_hip_leg_upper_.*": math.radians(-10.0),
+            "joint_leg_upper_leg_middle_.*": math.radians(-35.0),
+            "joint_leg_middle_leg_lower_.*": math.radians(-45.0),
         },
     ),
     actuators={

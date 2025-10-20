@@ -43,11 +43,14 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "500", "--video_length", "500", // "--rendering_mode", "performance",
-                      "--checkpoint", "checkpoints/Spider/spiderbot_v2.3.pt"
+                      //"--video", "--video_interval", "500", "--video_length", "500", // "--rendering_mode", "performance",
+                      //"--checkpoint", "checkpoints/Spider/spiderbot_v2.5.1.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "env": {
+                "CUDA_LAUNCH_BLOCKING": "1"
+            }
         },
         {
             "name": "Python: Play Environment",

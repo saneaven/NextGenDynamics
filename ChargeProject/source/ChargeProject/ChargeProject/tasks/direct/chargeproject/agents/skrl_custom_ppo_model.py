@@ -63,12 +63,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         self.num_layers = 2
         self.hidden_size = 512
         self.sequence_length = 128
-        self.lstm = nn.LSTM(
-            input_size=512,
-            hidden_size=self.hidden_size,
-            num_layers=self.num_layers,  # Using a single LSTM layer
-            batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        )
+        #self.lstm = nn.LSTM(
+        #    input_size=512,
+        #    hidden_size=self.hidden_size,
+        #    num_layers=self.num_layers,  # Using a single LSTM layer
+        #    batch_first=True,    # Input/output tensors are (batch, seq, feature)
+        #)
 
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),

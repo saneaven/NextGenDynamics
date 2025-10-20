@@ -271,12 +271,11 @@ class ChargeprojectEnv(DirectRLEnv):
         else:
             progress_reward = difference
         #progress_reward = difference
-        progress_reward *= torch.log1p(self._targets_reached)
+        progress_reward *= torch.log1p(self._targets_reached) + 1
 
         # Reward for moving (average of buffer is = to this)
-        movement_reward = torch.clamp(
-            (previous_buffered_distance - target_distance.squeeze(-1)), min=0.0
-        )
+        movement_reward = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
+
         
         # Velocity alignment the target
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
@@ -322,9 +321,18 @@ class ChargeprojectEnv(DirectRLEnv):
             torch.square(self._actions - self._previous_actions), dim=1
         )
         
+        first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[
+            :, self.feet_contact_ids
+        ]
+        last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_contact_ids]
+        feet_air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
+        feet_air_time = torch.clamp(feet_air_time, max=self.cfg.feet_air_time_max)
         
         # undesired contacts
         undesired_contacts = torch.sum(self.is_contact[:, self.undesired_contact_ids], dim=1)
+        undesired_contact_time = torch.sum(
+            self._contact_sensor.data.current_contact_time[:, self.undesired_contact_ids]
+        , dim=1)
         # If 3 or more feet are in contact, consider it stable
         stable_contact = torch.clamp(torch.sum(self.is_contact[:, self.feet_contact_ids], dim=1), max=3.0)
 
@@ -381,7 +389,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
 
         # Reward for stepping up/down
-        last_contact_time = self._contact_sensor.data.current_air_time[:, self.feet_contact_ids]
+        current_air_time = self._contact_sensor.data.current_air_time[:, self.feet_contact_ids]
         feet_in_contact = self.is_contact[:, self.feet_contact_ids]
         non_contact_count = torch.sum(~feet_in_contact, dim=1).clamp_min(1.0)  # at least 1 to avoid div by 0
         # + if moving up, - if moving down, 0 if contacting
@@ -389,9 +397,10 @@ class ChargeprojectEnv(DirectRLEnv):
         step_direction = torch.sign(vel) * torch.log1p(torch.abs(vel)) * (~feet_in_contact).float()
 
         # + if last_contact_time < cfg.step_up_time_end
-        target_dir = torch.sign(self.cfg.step_up_time_end - last_contact_time)
+        target_dir = torch.sign(self.cfg.step_up_time_end - current_air_time)
 
-        step_values = step_direction * target_dir
+        # Don't penalize negative going against target
+        step_values = torch.clamp(step_direction * target_dir, min=0.0) 
         
         # Positive reward if foot moving up and last contact was recent
         #   or if foot moving down and last contact was a while ago
@@ -399,29 +408,40 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Penalty for leg staying up too long
         step_length_penalty = torch.sum(
-            torch.clamp(last_contact_time - self.cfg.step_penalty_start, min=0.0, max=self.cfg.step_penalty_cap + self.cfg.step_penalty_start), dim=1
+            torch.clamp(current_air_time - self.cfg.step_penalty_start, min=0.0, max=self.cfg.step_penalty_cap + self.cfg.step_penalty_start), dim=1
+        )
+
+        # Penalty for leg being down too long
+        current_contact_time = self._contact_sensor.data.current_contact_time[:, self.feet_contact_ids]
+        grounded_length_penalty = torch.sum(
+            torch.clamp(current_contact_time - self.cfg.grounded_penalty_start, min=0.0, max=self.cfg.grounded_penalty_cap + self.cfg.grounded_penalty_start), dim=1
         )
 
         # Penalty for leg joints having angle above 0 radians
-        leg_joint_angles = self._robot.data.joint_pos[:, self.lower_joint_ids]
-        middle_joint_angles = leg_joint_angles[:, self.middle_joint_ids]
-        leg_angle_penalty = torch.mean(torch.clamp(leg_joint_angles, min=0.0), dim=1) + torch.mean(torch.clamp(middle_joint_angles, min=0.0), dim=1)
+        joint_pos = self._robot.data.joint_pos[:, self.dof_idx]  # [envs, num_joints]
+        joint_default = self._robot.data.default_joint_pos[:, self.dof_idx]  # [num_joints] or 0 if centered
+        joint_deviation = joint_pos - joint_default
+
+        # Mean squared deviation
+        joint_default_penalty = torch.mean(torch.square(joint_deviation), dim=1)
+
 
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
             # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
-            "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
-            "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
-            "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            #"progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
+            #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
+            #"reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
-            "movement_reward": movement_reward * self.cfg.movement_reward_scale * self.step_dt,
-            #"lin_vel_z_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
+            #"movement_reward": movement_reward * self.cfg.movement_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "dof_vel_l2": joint_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
+            "feet_air_time": feet_air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
+            "undesired_contact_time": undesired_contact_time * self.cfg.undesired_contact_time_reward_scale * self.step_dt,
             "desired_contacts": stable_contact * self.cfg.desired_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             "body_height_reward": body_height_reward * self.cfg.body_height_reward_scale * self.step_dt,
@@ -430,7 +450,8 @@ class ChargeprojectEnv(DirectRLEnv):
             "feet_under_body_penalty": feet_under_body_penalty * self.cfg.feet_under_body_penalty_scale * self.step_dt,
             "step_reward": step_reward * self.cfg.step_reward_scale * self.step_dt,
             "step_length_penalty": step_length_penalty * self.cfg.step_length_penalty_scale * self.step_dt,
-            "leg_angle_penalty": leg_angle_penalty * self.cfg.leg_angle_penalty_scale * self.step_dt,
+            "grounded_length_penalty": grounded_length_penalty * self.cfg.grounded_length_penalty_scale * self.step_dt,
+            "joint_default_penalty": joint_default_penalty * self.cfg.joint_default_penalty * self.step_dt,
         }
 
 
@@ -487,10 +508,10 @@ class ChargeprojectEnv(DirectRLEnv):
         
         # Logging deaths/time outs per second
         if self.cfg.log:
-            self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out) / self.num_envs)
-            self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out) / self.num_envs)
-            self._log_data("Episode_Termination/died", torch.count_nonzero(died) / self.num_envs)
-            self._log_data("Episode_Termination/on_ground", torch.count_nonzero(on_ground) / self.num_envs)
+            self._log_data("Episode_Termination/full_time_out", torch.count_nonzero(full_time_out))
+            self._log_data("Episode_Termination/time_out", torch.count_nonzero(timed_out))
+            self._log_data("Episode_Termination/died", torch.count_nonzero(died))
+            self._log_data("Episode_Termination/on_ground", torch.count_nonzero(on_ground))
 
         self.terminated = died | on_ground
         self.truncated = timed_out | full_time_out
