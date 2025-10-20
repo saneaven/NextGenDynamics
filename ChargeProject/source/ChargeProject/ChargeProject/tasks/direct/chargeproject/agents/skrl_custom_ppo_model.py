@@ -32,49 +32,47 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         # Observation encoder
         self.obs_encoder = nn.Sequential(
-            nn.Linear(obs_dim, 512),
-            nn.LayerNorm(512),
+            nn.Linear(obs_dim, 256),
+            nn.LayerNorm(256),
             nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(256, 192),
             nn.ReLU(),
         )
 
         # Height_data encoder CNN (16x16 to 256)
         self.height_encoder = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),  # 16x16 -> 8x8
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),   # 16x16 -> 8x8
             nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 8x8 -> 4x4
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # 8x8 -> 4x4
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
             nn.ReLU(),
-            nn.Flatten(),  # 64 * 2 * 2 = 256
-            nn.Linear(256, 256),
+            nn.Flatten(),  # 32 * 2 * 2 = 128
+            nn.Linear(128, 128),
             nn.ReLU(),
         )
 
         # For fusion of both encoders
         self.fusion = nn.Sequential(
-            nn.Linear(512, 512),
-            nn.LayerNorm(512),
-            nn.ReLU(),
+            nn.Linear(320, 256),
+            nn.LayerNorm(256),
+            nn.Tanh(),
         )
 
 
-        self.num_layers = 2
-        self.hidden_size = 512
-        self.sequence_length = 128
-        #self.lstm = nn.LSTM(
-        #    input_size=512,
-        #    hidden_size=self.hidden_size,
-        #    num_layers=self.num_layers,  # Using a single LSTM layer
-        #    batch_first=True,    # Input/output tensors are (batch, seq, feature)
-        #)
+        self.num_layers = 1
+        self.input_size = 256
+        self.hidden_size = 128
+        self.sequence_length = 32
+        self.gru = nn.GRU(
+            input_size=self.input_size,
+            hidden_size=self.hidden_size,
+            batch_first=True,    # Input/output tensors are (batch, seq, feature)
+        )
 
         self.net = nn.Sequential(
-            nn.Linear(self.hidden_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.Linear(self.hidden_size, 128),
+            nn.Tanh(),
         )
 
         self.policy_layer = nn.Linear(128, act_dim)
@@ -85,12 +83,19 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=1.0)
+                nn.init.orthogonal_(m.weight, gain=0.6)
                 nn.init.constant_(m.bias, 0)
 
     
     def get_specification(self):
-        return {}
+        return {
+            "rnn": {
+                "sequence_length": self.sequence_length,
+                "sizes": [
+                    (self.num_layers, self.num_envs, self.hidden_size),  # gru memory
+                ]
+            }
+        }
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -114,7 +119,6 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             height_data = states["height_data"]
             
             #terminated = inputs.get("terminated", None)
-            #hidden_states = inputs["rnn"]
             rnn_dict = {}
             
             # Encode observations
@@ -126,10 +130,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             fused = self.fusion(encoded)
 
             # LSTM
-            #rnn_output, rnn_dict = self.rnn_rollout(fused, terminated, hidden_states)
+            #rnn_output, rnn_dict = self.lstm_rollout(self.lstm, fused, terminated, inputs["rnn"])
+            # GRU
+            rnn_output, rnn_dict = self.gru_rollout(self.gru, fused, None, inputs["rnn"])
 
             # Final layers
-            net = self.net(fused)
+            net = self.net(rnn_output)
 
             self._shared_output = net, rnn_dict
 
@@ -143,8 +149,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             output = self.value_layer(net)
             return output, rnn_dict
 
-    # === RNN rollout logic ===
-    def rnn_rollout(self, states, terminated, hidden_states):
+    # === LSTM rollout logic ===
+    def lstm_rollout(self, model, states, terminated, hidden_states):
         #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
         if self.training:
             # reshape to (batch, seq, features)
@@ -170,7 +176,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 )
                 for i in range(len(indexes) - 1):
                     i0, i1 = indexes[i], indexes[i + 1]
-                    rnn_output, (h, c) = self.lstm(
+                    rnn_output, (h, c) = model(
                         rnn_input[:, i0:i1, :], hidden_states
                     )
                     h[:, (terminated[:, i1 - 1]), :] = 0
@@ -179,7 +185,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                     rnn_outputs.append(rnn_output)
                 rnn_output = torch.cat(rnn_outputs, dim=1)
             else:
-                rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
+                rnn_output, hidden_states = model(rnn_input, hidden_states)
         else:
             # evaluation mode: one step at a time
             rnn_input = states.view(-1, 1, states.shape[-1])
@@ -188,8 +194,49 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             h = h.contiguous()
             c = c.contiguous()
             hidden_states = (h, c)
-            rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
+            rnn_output, hidden_states = model(rnn_input, hidden_states)
 
+        # flatten batch + sequence
+        rnn_output = torch.flatten(rnn_output, start_dim=0, end_dim=1)
+
+        return rnn_output, {"rnn": hidden_states}
+
+    def gru_rollout(self, model, states, terminated, hidden_states):
+        #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
+        if self.training:
+            # reshape to (batch, seq, features)
+            rnn_input = states.view(-1, self.sequence_length, states.shape[-1])
+            
+
+            hidden_states[0] = hidden_states[0].view(
+                self.num_layers, -1, self.sequence_length, hidden_states[0].shape[-1]
+            )[:, :, 0, :].contiguous()
+
+            if terminated is not None and torch.any(terminated):
+                # handle resets within the sequence
+                rnn_outputs = []
+                terminated = terminated.view(-1, self.sequence_length)
+                indexes = (
+                    [0]
+                    + (terminated[:, :-1].any(dim=0).nonzero(as_tuple=True)[0] + 1).tolist()
+                    + [self.sequence_length]
+                )
+                for i in range(len(indexes) - 1):
+                    i0, i1 = indexes[i], indexes[i + 1]
+                    rnn_output, hidden_states[0] = model(
+                        rnn_input[:, i0:i1, :], hidden_states[0]
+                    )
+                    hidden_states[0][:, (terminated[:, i1 - 1]), :] = 0
+                    rnn_outputs.append(rnn_output)
+                rnn_output = torch.cat(rnn_outputs, dim=1)
+            else:
+                rnn_output, hidden_states[0] = model(rnn_input, hidden_states[0])
+        else:
+            # evaluation mode: one step at a time
+            rnn_input = states.view(-1, 1, states.shape[-1])
+            # Make h contiguous
+            hidden_states[0] = hidden_states[0].contiguous()
+            rnn_output, hidden_states[0] = model(rnn_input, hidden_states[0])
         # flatten batch + sequence
         rnn_output = torch.flatten(rnn_output, start_dim=0, end_dim=1)
 

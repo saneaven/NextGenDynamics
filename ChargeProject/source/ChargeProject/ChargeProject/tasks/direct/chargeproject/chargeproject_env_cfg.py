@@ -104,7 +104,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*10),#0),
+        num_envs=int(1024*4),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -154,7 +154,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     movement_reward_scale = 60
     z_vel_reward_scale = 0
     ang_vel_reward_scale = -1.35 * 2
-    joint_torque_reward_scale = (1/effort_mod) * -0.00003 * 40
+    joint_torque_reward_scale = (1/effort_mod) * -0.00003 * 50
     joint_accel_reward_scale = -8.0e-08 * 3 * 100 * 2.5
     dof_vel_reward_scale = -0.0006 * 3 * 13
     action_rate_reward_scale = -1.2 / 2
@@ -166,22 +166,23 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10
     flat_orientation_reward_scale = -80 * 5 * 2
-    body_height_reward_scale = 65
+    body_height_reward_scale = 65 * 2
     lower_leg_reward_scale = 200
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -6000 * 3 * 15
+    feet_under_body_penalty_scale = -6000 * 3 * 3
     body_penalty_radius = 0.2
 
     # rewards positive joint velocity when time from contact
     step_reward_scale = 75
     step_up_time_end = 0.45
     # linear scale of penalty if leg doesn't step in this time
-    step_length_penalty_scale = -25
+    step_length_penalty_scale = -25 / 2
     step_penalty_start = 1.1
     step_penalty_cap = 2.0
-    grounded_length_penalty_scale = -20
+    grounded_length_penalty_scale = -20 / 2
     grounded_penalty_start = 1.5
     grounded_penalty_cap = 2.0
 
-
+    
     joint_default_penalty = -100 * 5
+

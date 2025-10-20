@@ -427,13 +427,11 @@ class ChargeprojectEnv(DirectRLEnv):
 
 
         return {
-            # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
-            # "track_ang_vel_z_exp": yaw_rate_error_mapped * self.cfg.yaw_rate_reward_scale * self.step_dt,
-            #"progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
-            #"velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
-            #"reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            "progress_reward": progress_reward * self.cfg.progress_reward_scale * self.step_dt,
+            "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
+            "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
-            #"movement_reward": movement_reward * self.cfg.movement_reward_scale * self.step_dt,
+            "movement_reward": movement_reward * self.cfg.movement_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
