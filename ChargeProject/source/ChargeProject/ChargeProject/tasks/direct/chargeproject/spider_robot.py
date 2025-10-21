@@ -12,7 +12,7 @@ FILE = Path(__file__).resolve()
 SPIDER_PATH = FILE.parents[7] / "SpiderBot" / "spider" / "spider.usd"
 
 
-effort_mod = 0.25
+effort_mod = 0.1
 stiffness_mod = 0.7
 damping_mod = 3.0
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
