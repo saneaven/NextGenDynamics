@@ -44,7 +44,7 @@
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "500", "--video_length", "500", // "--rendering_mode", "performance",
-                      //"--checkpoint", "checkpoints/Spider/spiderbot_v3.0.2.pt"
+                      //"--checkpoint", "checkpoints/Spider/spiderbot_v5.0.0.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             "console": "integratedTerminal",

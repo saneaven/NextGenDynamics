@@ -231,6 +231,7 @@ class ChargeprojectEnv(DirectRLEnv):
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
                 self._robot.data.projected_gravity_b,
+                self.is_contact[:, self.feet_contact_ids].float(),
                 target_unit_vector,
                 target_distance,
                 next_target_unit_vector,
@@ -328,6 +329,13 @@ class ChargeprojectEnv(DirectRLEnv):
         feet_air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
         feet_air_time = torch.clamp(feet_air_time, max=self.cfg.feet_air_time_max)
         
+        first_air = self._contact_sensor.compute_first_air(self.step_dt)[
+            :, self.feet_contact_ids
+        ]
+        last_contact_time = self._contact_sensor.data.last_contact_time[:, self.feet_contact_ids]
+        feet_ground_time = torch.sum((last_contact_time - self.cfg.feet_ground_time_target) * first_air, dim=1)
+        feet_ground_time = torch.clamp(feet_ground_time, max=self.cfg.feet_ground_time_max)
+
         # undesired contacts
         undesired_contacts = torch.sum(self.is_contact[:, self.undesired_contact_ids], dim=1)
         undesired_contact_time = torch.sum(
@@ -438,6 +446,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "dof_vel_l2": joint_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             "feet_air_time": feet_air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "feet_ground_time": feet_ground_time * self.cfg.feet_ground_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "undesired_contact_time": undesired_contact_time * self.cfg.undesired_contact_time_reward_scale * self.step_dt,
             "desired_contacts": stable_contact * self.cfg.desired_contact_reward_scale * self.step_dt,

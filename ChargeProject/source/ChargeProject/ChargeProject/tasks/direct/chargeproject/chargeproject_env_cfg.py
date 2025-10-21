@@ -20,7 +20,7 @@ from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.sim import SimulationCfg, PhysxCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
-from .spider_robot import SPIDER_CFG, effort_mod
+from .spider_robot import SPIDER_CFG
 
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
@@ -42,9 +42,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     action_space = 24
     #observation_space = 51
     #observation_space = 87 # without height scanner
-    observation_space = 376 # with height scanner
+    #observation_space = 376 # with height scanner
     observation_space = spaces.Dict({
-        "observations": spaces.Box(-math.inf, math.inf, shape=(87,), dtype=float),
+        "observations": spaces.Box(-math.inf, math.inf, shape=(93,), dtype=float),
         "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float)
     })
     state_space = 0 #idk why this is here
@@ -104,7 +104,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*4),#0),
+        num_envs=int(1024*0.75),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -143,46 +143,49 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 1
     
-    progress_reward_scale = 2500 # / 2# /2 for 1.4 pow
-    progress_pow = 1#.4
+    progress_reward_scale = 2500 / 5 # / 2# /2 for 1.4 pow
+    progress_pow = 1.4
     distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 0.75
+    velocity_alignment_reward_scale = 80 * 2.5
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1000
     death_penalty_scale = -2000
-    movement_reward_scale = 60
+    movement_reward_scale = 60 / 2
     z_vel_reward_scale = 0
     ang_vel_reward_scale = -1.35 * 2
-    joint_torque_reward_scale = (1/effort_mod) * -0.00003 * 50
-    joint_accel_reward_scale = -8.0e-08 * 3 * 100 * 2.5
+    joint_torque_reward_scale = -0.00003 * 100
+    joint_accel_reward_scale = -2.0e-06
     dof_vel_reward_scale = -0.0006 * 3 * 13
     action_rate_reward_scale = -1.2 / 2
     feet_air_time_reward_scale = 90
     feet_air_time_target = 0.7
     feet_air_time_max = 0.9
+    feet_ground_time_reward_scale = 90
+    feet_ground_time_target = 0.3
+    feet_ground_time_max = 1.0
     
     undesired_contact_reward_scale = -25
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10
     flat_orientation_reward_scale = -80 * 5 * 2
-    body_height_reward_scale = 65 * 2
+    body_height_reward_scale = 65 * 4
     lower_leg_reward_scale = 200
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -6000 * 3 * 3
-    body_penalty_radius = 0.2
+    feet_under_body_penalty_scale = -6000 * 3 * 3 * 3
+    body_penalty_radius = 0.175
 
     # rewards positive joint velocity when time from contact
     step_reward_scale = 75
-    step_up_time_end = 0.45
+    step_up_time_end = 0.55
     # linear scale of penalty if leg doesn't step in this time
-    step_length_penalty_scale = -25 / 2
-    step_penalty_start = 1.1
+    step_length_penalty_scale = -25 
+    step_penalty_start = 1.3
     step_penalty_cap = 2.0
-    grounded_length_penalty_scale = -20 / 2
-    grounded_penalty_start = 1.5
+    grounded_length_penalty_scale = -20
+    grounded_penalty_start = 1.0
     grounded_penalty_cap = 2.0
 
     
-    joint_default_penalty = -100 * 5
+    joint_default_penalty = -100
 

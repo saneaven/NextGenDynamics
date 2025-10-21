@@ -8,6 +8,7 @@ from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
 
+"""
 effort_mod = 0.1 # 0.025
 stiffness_mod = 0.7
 damping_mod = 1.0
@@ -24,12 +25,12 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
         "joint_leg_upper_leg_middle_.*": 176.0 * effort_mod,
         "joint_leg_middle_leg_lower_.*": 125.0 * effort_mod,
     },
-    velocity_limit_sim={
-        "joint_body_leg_hip_.*": 3.0,
-        "joint_leg_hip_leg_upper_.*": 3.0,
-        "joint_leg_upper_leg_middle_.*": 3.0,
-        "joint_leg_middle_leg_lower_.*": 3.0,
-    },
+    #velocity_limit_sim={
+    #    "joint_body_leg_hip_.*": 3.0,
+    #    "joint_leg_hip_leg_upper_.*": 3.0,
+    #    "joint_leg_upper_leg_middle_.*": 3.0,
+    #    "joint_leg_middle_leg_lower_.*": 3.0,
+    #},
     stiffness={
         "joint_body_leg_hip_.*": 208 * effort_mod * stiffness_mod,
         "joint_leg_hip_leg_upper_.*": 256.0 * effort_mod * stiffness_mod,
@@ -50,6 +51,18 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     },
     armature = 0.005,
 )
+"""
+SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
+    joint_names_expr=[
+        "joint_body_leg_hip_.*",
+        "joint_leg_hip_leg_upper_.*",
+        "joint_leg_upper_leg_middle_.*",
+        "joint_leg_middle_leg_lower_.*",
+    ],
+    stiffness=60,
+    damping=1.5
+)
+
 # print args in SPIDER_ACTUATOR_CFG
 print(SPIDER_ACTUATOR_CFG)
 
