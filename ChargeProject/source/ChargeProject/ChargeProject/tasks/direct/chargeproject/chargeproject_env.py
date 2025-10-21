@@ -272,7 +272,7 @@ class ChargeprojectEnv(DirectRLEnv):
         else:
             progress_reward = difference
         #progress_reward = difference
-        progress_reward *= torch.log1p(self._targets_reached) + 1
+        progress_reward *= torch.log1p(self._targets_reached/2) + 1
 
         # Reward for moving (average of buffer is = to this)
         movement_reward = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
@@ -297,15 +297,8 @@ class ChargeprojectEnv(DirectRLEnv):
         death_penalty = died.float() + on_ground.float()
 
 
-
-        # linear velocity tracking
-        # lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
-        # lin_vel_error_mapped = torch.exp(-lin_vel_error / 0.25)
-        # yaw rate tracking
-        # yaw_rate_error = torch.square(self._commands[:, 2] - self._robot.data.root_ang_vel_b[:, 2])
-        # yaw_rate_error_mapped = torch.exp(-yaw_rate_error / 0.25)
         # z velocity tracking
-        #z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
+        z_vel_error = torch.square(self._robot.data.root_lin_vel_b[:, 2])
         # angular velocity x/y
         ang_vel_error = torch.sum(
             torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1
@@ -440,6 +433,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
             "movement_reward": movement_reward * self.cfg.movement_reward_scale * self.step_dt,
+            "z_vel_l2": z_vel_error * self.cfg.z_vel_reward_scale * self.step_dt,
             "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
             "dof_torques_l2": joint_torques * self.cfg.joint_torque_reward_scale * self.step_dt,
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,

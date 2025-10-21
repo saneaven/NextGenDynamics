@@ -104,7 +104,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*0.75),#0),
+        num_envs=int(1024*4),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -143,32 +143,32 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 1
     
-    progress_reward_scale = 2500 / 5 # / 2# /2 for 1.4 pow
+    progress_reward_scale = 2500 * 0.8 # / 2# /2 for 1.4 pow
     progress_pow = 1.4
     distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 2.5
+    velocity_alignment_reward_scale = 80 * 2
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1000
     death_penalty_scale = -2000
     movement_reward_scale = 60 / 2
-    z_vel_reward_scale = 0
+    z_vel_reward_scale = -15
     ang_vel_reward_scale = -1.35 * 2
     joint_torque_reward_scale = -0.00003 * 100
-    joint_accel_reward_scale = -2.0e-06
+    joint_accel_reward_scale = -8.0e-06
     dof_vel_reward_scale = -0.0006 * 3 * 13
     action_rate_reward_scale = -1.2 / 2
-    feet_air_time_reward_scale = 90
+    feet_air_time_reward_scale = 160
     feet_air_time_target = 0.7
     feet_air_time_max = 0.9
-    feet_ground_time_reward_scale = 90
+    feet_ground_time_reward_scale = 160
     feet_ground_time_target = 0.3
     feet_ground_time_max = 1.0
     
     undesired_contact_reward_scale = -25
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80 * 5 * 2
+    flat_orientation_reward_scale = -80 * 5 * 3
     body_height_reward_scale = 65 * 4
     lower_leg_reward_scale = 200
     hip_penalty_scale = -30
@@ -179,13 +179,13 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     step_reward_scale = 75
     step_up_time_end = 0.55
     # linear scale of penalty if leg doesn't step in this time
-    step_length_penalty_scale = -25 
+    step_length_penalty_scale = -15
     step_penalty_start = 1.3
     step_penalty_cap = 2.0
-    grounded_length_penalty_scale = -20
+    grounded_length_penalty_scale = -15
     grounded_penalty_start = 1.0
     grounded_penalty_cap = 2.0
 
     
-    joint_default_penalty = -100
+    joint_default_penalty = 0
 

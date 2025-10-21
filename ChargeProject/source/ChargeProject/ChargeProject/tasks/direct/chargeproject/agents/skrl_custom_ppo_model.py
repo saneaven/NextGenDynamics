@@ -32,10 +32,10 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         # Observation encoder
         self.obs_encoder = nn.Sequential(
-            nn.Linear(obs_dim, 256),
-            nn.LayerNorm(256),
+            nn.Linear(obs_dim, 512),
+            nn.LayerNorm(512),
             nn.ReLU(),
-            nn.Linear(256, 192),
+            nn.Linear(512, 256),
             nn.ReLU(),
         )
 
@@ -54,7 +54,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         # For fusion of both encoders
         self.fusion = nn.Sequential(
-            nn.Linear(320, 256),
+            nn.Linear(256+128, 256),
             nn.LayerNorm(256),
             nn.Tanh(),
         )
@@ -62,7 +62,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         self.num_layers = 1
         self.input_size = 256
-        self.hidden_size = 128
+        self.hidden_size = 256
         self.sequence_length = 32
         self.gru = nn.GRU(
             input_size=self.input_size,
