@@ -28,7 +28,7 @@ def parse_tfevents_to_dataframe(acc):
             events = acc.Scalars(tag)
             for event in events:
                 all_data.append({
-                    'tag': tag,
+                    'tag': tag.replace('Info / Episode_Reward/', ''),
                     'step': event.step,
                     'value': event.value
                 })

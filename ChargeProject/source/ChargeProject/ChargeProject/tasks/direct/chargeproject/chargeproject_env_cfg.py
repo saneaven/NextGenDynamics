@@ -41,7 +41,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         dt=1 / 120, render_interval=decimation,
         physx=PhysxCfg(
             #gpu_collision_stack_size = 2**27,
-            #gpu_max_rigid_patch_count = 2**19
+            gpu_max_rigid_patch_count = 2**19
         )
     )
     
@@ -49,7 +49,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     base_name = "body"
     foot_names = "leg_foot_.*"
     undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
+    middle_leg_joint_names = "joint_leg_upper_leg_middle_.*"
     lower_leg_names = "leg_lower_.*"
+    lower_leg_joint_names = "joint_leg_middle_leg_lower_.*"
     hip_joint_names = "joint_body_leg_hip_.*"
 
     # Unitree Go2
@@ -80,7 +82,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     success_tolerance = 1.0 #1  # meters
     time_out_per_target = 30.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
-    base_on_ground_time = 100.05 #seconds before death if base is on ground
+    base_on_ground_time = 1.0 #seconds before death if base is on ground
 
     log_targets_reached_max = 10
     log_targets_reached_step = 1
@@ -88,7 +90,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 0.7
+    action_scale = 1
     
     progress_reward_scale = 50.0 * 10.0 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version

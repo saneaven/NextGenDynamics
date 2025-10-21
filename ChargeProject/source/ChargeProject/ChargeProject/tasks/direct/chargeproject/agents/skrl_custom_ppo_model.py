@@ -72,7 +72,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         self.lstm = nn.LSTM(
             input_size=512,
             hidden_size=self.hidden_size,
-            num_layers=self.num_layers,  # Using a single LSTM layer
+            num_layers=self.num_layers,
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
         )
 
@@ -81,6 +81,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
+            nn.Linear(self.hidden_size, 128),
+            nn.Tanh(),
         )
 
         self.policy_layer = nn.Linear(128, act_dim)
@@ -91,12 +93,19 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=1.0)
+                nn.init.orthogonal_(m.weight, gain=0.6)
                 nn.init.constant_(m.bias, 0)
 
     
     def get_specification(self):
-        return {}
+        return {
+            "rnn": {
+                "sequence_length": self.sequence_length,
+                "sizes": [
+                    (self.num_layers, self.num_envs, self.hidden_size),  # gru memory
+                ]
+            }
+        }
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
@@ -120,20 +129,27 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             height_data = states["height_data"]
             lidar_data = states["lidar_data"]
             
-            #terminated = inputs.get("terminated", None)
-            #hidden_states = inputs["rnn"]
+            terminated = inputs.get("terminated", None)
             rnn_dict = {}
             
+            # Encode observations
             obs_encoded = self.obs_encoder(observations)
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
             lidar_encoded = self.lidar_encoder(lidar_data.unsqueeze(1))  # Add channel dimension
 
-            #rnn_output, rnn_dict = self.rnn_rollout(obs_encoded + height_encoded, terminated, hidden_states)
-            #net = self.net(rnn_output)
+            # Fusion
+            # fused = self.fusion(encoded)
 
             fused = torch.cat([obs_encoded, height_encoded, lidar_encoded], dim=-1)
-            lstm_output, (h_n, c_n) = self.lstm(fused)
+
+            # LSTM
+            lstm_output, rnn_dict = self.lstm_rollout(self.lstm, fused, terminated, inputs["rnn"])
+            # GRU
+            # rnn_output, rnn_dict = self.gru_rollout(self.gru, fused, None, inputs["rnn"])
+
+            # Final layers
             net = self.net(lstm_output)
+
             self._shared_output = net, rnn_dict
 
         if role == "policy":
@@ -146,8 +162,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             output = self.value_layer(net)
             return output, rnn_dict
 
-    # === RNN rollout logic ===
-    def rnn_rollout(self, states, terminated, hidden_states):
+    # === LSTM rollout logic ===
+    def lstm_rollout(self, model, states, terminated, hidden_states):
         #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
         if self.training:
             # reshape to (batch, seq, features)
@@ -173,7 +189,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 )
                 for i in range(len(indexes) - 1):
                     i0, i1 = indexes[i], indexes[i + 1]
-                    rnn_output, (h, c) = self.lstm(
+                    rnn_output, (h, c) = model(
                         rnn_input[:, i0:i1, :], hidden_states
                     )
                     h[:, (terminated[:, i1 - 1]), :] = 0
@@ -182,7 +198,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                     rnn_outputs.append(rnn_output)
                 rnn_output = torch.cat(rnn_outputs, dim=1)
             else:
-                rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
+                rnn_output, hidden_states = model(rnn_input, hidden_states)
         else:
             # evaluation mode: one step at a time
             rnn_input = states.view(-1, 1, states.shape[-1])
@@ -191,8 +207,49 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             h = h.contiguous()
             c = c.contiguous()
             hidden_states = (h, c)
-            rnn_output, hidden_states = self.lstm(rnn_input, hidden_states)
+            rnn_output, hidden_states = model(rnn_input, hidden_states)
 
+        # flatten batch + sequence
+        rnn_output = torch.flatten(rnn_output, start_dim=0, end_dim=1)
+
+        return rnn_output, {"rnn": hidden_states}
+
+    def gru_rollout(self, model, states, terminated, hidden_states):
+        #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
+        if self.training:
+            # reshape to (batch, seq, features)
+            rnn_input = states.view(-1, self.sequence_length, states.shape[-1])
+            
+
+            hidden_states[0] = hidden_states[0].view(
+                self.num_layers, -1, self.sequence_length, hidden_states[0].shape[-1]
+            )[:, :, 0, :].contiguous()
+
+            if terminated is not None and torch.any(terminated):
+                # handle resets within the sequence
+                rnn_outputs = []
+                terminated = terminated.view(-1, self.sequence_length)
+                indexes = (
+                    [0]
+                    + (terminated[:, :-1].any(dim=0).nonzero(as_tuple=True)[0] + 1).tolist()
+                    + [self.sequence_length]
+                )
+                for i in range(len(indexes) - 1):
+                    i0, i1 = indexes[i], indexes[i + 1]
+                    rnn_output, hidden_states[0] = model(
+                        rnn_input[:, i0:i1, :], hidden_states[0]
+                    )
+                    hidden_states[0][:, (terminated[:, i1 - 1]), :] = 0
+                    rnn_outputs.append(rnn_output)
+                rnn_output = torch.cat(rnn_outputs, dim=1)
+            else:
+                rnn_output, hidden_states[0] = model(rnn_input, hidden_states[0])
+        else:
+            # evaluation mode: one step at a time
+            rnn_input = states.view(-1, 1, states.shape[-1])
+            # Make h contiguous
+            hidden_states[0] = hidden_states[0].contiguous()
+            rnn_output, hidden_states[0] = model(rnn_input, hidden_states[0])
         # flatten batch + sequence
         rnn_output = torch.flatten(rnn_output, start_dim=0, end_dim=1)
 
