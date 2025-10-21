@@ -7,7 +7,7 @@ from skrl.utils.spaces.torch import unflatten_tensorized_space
 
 
 class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device, num_envs, init_log_std=0.0):
+    def __init__(self, observation_space, action_space, device, num_envs, init_log_std=0.0, gain=1.0):
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(
             self,
@@ -83,7 +83,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=0.6)
+                nn.init.orthogonal_(m.weight, gain=gain)
                 nn.init.constant_(m.bias, 0)
 
     

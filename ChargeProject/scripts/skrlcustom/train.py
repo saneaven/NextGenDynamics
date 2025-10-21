@@ -221,7 +221,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         action_space=env.action_space,
         device=device,
         num_envs=env.num_envs,
-        init_log_std=agent_cfg["model"]["log_std"],
+        init_log_std=agent_cfg["model"]["log_std_init"],
+        gain=agent_cfg["model"]["gain"],    
     )
     models["value"] = models["policy"]
 

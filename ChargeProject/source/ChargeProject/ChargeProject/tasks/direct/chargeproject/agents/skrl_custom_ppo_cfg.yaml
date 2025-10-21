@@ -8,7 +8,8 @@ seed: 42
 
 # Model defined in skrl_custom_ppo_model.py
 model:
-  log_std: 0.0
+  log_std_init: -1.0
+  gain: 0.7
 
 
 # Rollout memory automicaly set in train
