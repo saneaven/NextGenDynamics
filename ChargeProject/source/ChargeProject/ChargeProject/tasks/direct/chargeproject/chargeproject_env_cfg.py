@@ -105,7 +105,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*0.5),#0),
+        num_envs=int(1024*3.0),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -144,11 +144,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 1
     
-    progress_reward_scale = 2500 * 0.8 / 2 # / 2# /2 for 1.4 pow
+    progress_reward_scale = 2500 * 0.8 # / 2# /2 for 1.4 pow
     progress_pow = 1#.4
     distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 2 / 2
+    velocity_alignment_reward_scale = 80 * 2 * 2
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1000
     death_penalty_scale = -2000
@@ -169,7 +169,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_reward_scale = -25
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80 * 5 * 2
+    flat_orientation_reward_scale = -80 * 5 * 3
     body_height_reward_scale = 65 * 4
     lower_leg_reward_scale = 200
     hip_penalty_scale = -30
