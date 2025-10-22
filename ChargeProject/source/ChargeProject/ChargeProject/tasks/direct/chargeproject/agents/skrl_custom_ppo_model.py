@@ -149,27 +149,29 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             fused_global = self.fusion(torch.cat([base_encoded, height_encoded], dim=-1))  # [B, 128]
 
             # --- Per-leg encoding and GRU ---
-            leg_decoded_all = []
-            for leg_id in range(self.num_legs):
-                leg_obs = leg_obs_all[:, leg_id, :]  # [B, leg_dim]
-                leg_encoded = self.leg_encoder(leg_obs)  # [B, 32]
+            leg_obs_flat = leg_obs_all.reshape(-1, leg_obs_all.shape[-1])  # [B * num_legs, leg_dim]
+            leg_encoded = self.leg_encoder(leg_obs_flat)
+            fused_global_exp = fused_global.unsqueeze(1).expand(-1, self.num_legs, -1).contiguous()
+            fused_global_flat = fused_global_exp.reshape(-1, fused_global_exp.shape[-1])  # [B * num_legs, 128]
+            leg_gru_input = torch.cat([fused_global_flat, leg_encoded], dim=-1)
+            if terminated is not None:
+                terminated_flat = terminated.expand(-1, self.num_legs).reshape(-1)
+            else:
+                terminated_flat = None
 
-                # Combine with global context before GRU
-                leg_gru_input = torch.cat([fused_global, leg_encoded], dim=-1)
-
-                leg_rnn_output, leg_rnn_hidden = self.gru_rollout(
-                    self.leg_gru,
-                    self.leg_num_layers,
-                    leg_gru_input,
-                    terminated,
-                    rnn_data[leg_id],
-                )
-                rnn_dict["rnn"].append(leg_rnn_hidden)
-
-                leg_decoded = self.leg_decoder(leg_rnn_output)  # [B, 32]
-                leg_decoded_all.append(leg_decoded)
-
-            leg_decoded_all = torch.stack(leg_decoded_all, dim=1)  # [B, num_legs, 32]
+            # rnn_data[0]-rnn_data[5]
+            leg_data_flat = torch.cat(rnn_data[:self.num_legs], dim=1)
+            leg_rnn_output, leg_rnn_hidden = self.gru_rollout(
+                self.leg_gru,
+                self.leg_num_layers,
+                leg_gru_input,
+                terminated_flat,
+                leg_data_flat,
+            )
+            for i in range(self.num_legs):
+                rnn_dict["rnn"].append(leg_rnn_hidden[:, i::self.num_legs, :])  # split hidden states per leg
+            leg_decoded_flat = self.leg_decoder(leg_rnn_output)  # [B * num_legs, 32]
+            leg_decoded_all = leg_decoded_flat.view(-1, self.num_legs, leg_decoded_flat.shape[-1])  # [B, num_legs, 32]
 
             # --- Aggregate leg features for value ---
             leg_mean = leg_decoded_all.mean(dim=1)
@@ -177,14 +179,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             leg_agg = torch.cat([leg_mean, leg_std], dim=-1)  # [B, 64]
 
             # --- Policy Head ---
-            leg_actions = []
-            for leg_id in range(self.num_legs):
-                leg_feat = leg_decoded_all[:, leg_id, :]
-                leg_action_mean = self.leg_policy_head(leg_feat)  # [B, action_dim_per_leg]
-                leg_actions.append(leg_action_mean)
-
-            mean = torch.stack(leg_actions, dim=1)  # [B, num_legs, action_dim]
-            mean_flat = mean.view(mean.shape[0], -1)  # flatten to [B, num_legs * action_dim] for memory
+            leg_action_mean = self.leg_policy_head(leg_decoded_flat)  # [B * num_legs, action_dim_per_leg]
+            mean_flat = leg_action_mean.view(-1, self.num_legs * self.num_leg_joints)  # [B, num_legs, action_dim]
 
 
             # Calc value output
@@ -194,7 +190,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 self.value_gru,
                 self.value_num_layers,
                 value_input,
-                inputs.get("terminated", None),
+                terminated,
                 rnn_data[-1],  # last slot for value GRU
             )
             rnn_dict["rnn"].append(value_rnn_hidden)
