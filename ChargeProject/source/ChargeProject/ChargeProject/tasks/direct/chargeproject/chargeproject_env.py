@@ -292,7 +292,7 @@ class ChargeprojectEnv(DirectRLEnv):
         count_valid = torch.clamp(torch.sum(~torch.isnan(self._distance_buffer), dim=1), min=1.0)
         previous_buffered_distance = sum_valid / count_valid
         difference = (previous_buffered_distance - target_distance.squeeze(-1)) * (1 + 0.5 * (count_valid-1))
-        if self.cfg.progress_pow != 1.0:
+        if self.cfg.progress_pow != 1.0: 
             progress_reward = torch.sign(difference) * torch.pow(torch.abs(difference), self.cfg.progress_pow)
         else:
             progress_reward = difference
