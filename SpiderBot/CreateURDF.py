@@ -12,11 +12,11 @@ lower_leg = 0.175
 foot_radius = np.sqrt(2 * body_height**2) / 2
 
 # Joint parameters 
-# min, max, offset, effort (N*m), velocity (rad/s), damping (N*m*s/rad), friction (N*m)
+# min, max, offset, effort (N*m),
 hip_info = [-45, 45, 0, 45]
-upper_info = [-75, 75, 0, 30] # default angle -35
-middle_info = [-90, -5, 0, 22] # default angle 70
-lower_info = [-90, -5, 0, 11] # default angle 55
+upper_info = [-20, 50, 0, 45]
+middle_info = [-95, -5, 0, 105]
+lower_info = [-85, -5, 0, 65]
 
 # EFFORT, VELOCITY CHANGE IN spider_robot.py
 # (idk if friction does anything either)

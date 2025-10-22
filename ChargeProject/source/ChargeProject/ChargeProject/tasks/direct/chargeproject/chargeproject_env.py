@@ -33,8 +33,6 @@ class ChargeprojectEnv(DirectRLEnv):
         self, cfg: ChargeprojectEnvCfg, render_mode: str | None = None, **kwargs
     ):
         super().__init__(cfg, render_mode, **kwargs)
-
-        self.dof_idx, _ = self._robot.find_joints(SPIDER_ACTUATOR_CFG.joint_names_expr)
         
         # Target positions
         self._desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
@@ -43,16 +41,12 @@ class ChargeprojectEnv(DirectRLEnv):
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
 
-
+        # num_envs, 6, 4
         self._actions = torch.zeros(
-            (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
+            self.num_envs, self.action_space.shape[1], self.action_space.shape[2],
             device=self.device,
         )
-        self._previous_actions = torch.zeros(
-            self.num_envs,
-            gym.spaces.flatdim(self.single_action_space),
-            device=self.device,
-        )
+        self._previous_actions = torch.zeros_like(self._actions)
 
         self._last_targets_reached = torch.zeros(self.num_envs, device=self.device)
 
@@ -72,8 +66,20 @@ class ChargeprojectEnv(DirectRLEnv):
         self.hip_joint_ids, _ = self._robot.find_joints(self.cfg.hip_joint_names)
         self.middle_joint_ids, _ = self._robot.find_joints(self.cfg.middle_leg_joint_names)
         self.lower_joint_ids, _ = self._robot.find_joints(self.cfg.lower_leg_joint_names)
-        self.feet_contact_ids, _ = self._contact_sensor.find_bodies(self.cfg.foot_names)
         self.feet_body_ids, _ = self._robot.find_bodies(self.cfg.foot_names)
+        self.leg_joint_ids = []
+        self.feet_contact_ids = []
+        self.dof_idx = []
+        for i in range(6):
+            vals = []
+            vals.append(self._robot.find_bodies(f".*hip_{i}")[0][0])
+            vals.append(self._robot.find_bodies(f".*upper_{i}")[0][0])
+            vals.append(self._robot.find_bodies(f".*middle_{i}")[0][0])
+            vals.append(self._robot.find_bodies(f".*lower_{i}")[0][0])
+            self.leg_joint_ids.append(vals)
+            self.feet_contact_ids.append(self._contact_sensor.find_bodies(f".*foot_{i}")[0][0])
+            self.dof_idx.extend(vals)
+
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
@@ -137,7 +143,9 @@ class ChargeprojectEnv(DirectRLEnv):
         self._up_dir = torch.tensor([0.0, 0.0, 1.0], device=self.device)
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
-        self._actions = actions.clone()
+        self._actions = actions.clone()#.view(
+          #  self.num_envs, self.action_space.shape[1], self.action_space.shape[2]
+        #)
         target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w[:, :2], dim=1)
 
         if self.cfg.cameras:
@@ -148,8 +156,9 @@ class ChargeprojectEnv(DirectRLEnv):
         self._distance_buffer[:, index] = target_distance.squeeze(-1)
 
     def _apply_action(self) -> None:
+        # Debugging prints
         self.processed_actions = (
-            self.cfg.action_scale * self._actions + self._robot.data.default_joint_pos[:, self.dof_idx]
+            self.cfg.action_scale * self._actions.view(self._actions.shape[0], -1) + self._robot.data.default_joint_pos[:, self.dof_idx]
         )
 
         """
@@ -226,24 +235,40 @@ class ChargeprojectEnv(DirectRLEnv):
         height_data = height_data.view(self.num_envs, 16, 16)
 
         # Concatenate the selected observations into a single tensor.
-        obs = torch.cat(
+        base_obs = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
                 self._robot.data.projected_gravity_b,
-                self.is_contact[:, self.feet_contact_ids].float(),
                 target_unit_vector,
                 target_distance,
                 next_target_unit_vector,
                 next_target_distance,
-                self._robot.data.joint_pos[:, self.dof_idx] - self._robot.data.default_joint_pos[:, self.dof_idx],
-                self._robot.data.joint_vel[:, self.dof_idx],
-                self._actions,
             ],
             dim=-1,
         )
+        # Concatenate the selected observations into a single tensor.
+        leg_obs = []
+        for i in range(self.action_space.shape[1]):
+            leg_obs.append(torch.cat(
+                [
+                self._robot.data.root_lin_vel_b,
+                self._robot.data.root_ang_vel_b,
+                self._robot.data.projected_gravity_b,
+                self._robot.data.joint_pos[:, self.leg_joint_ids[i]],
+                self._robot.data.joint_vel[:, self.leg_joint_ids[i]],
+                self.actions[:, i],
+                self.is_contact[:, self.feet_contact_ids[i]].float().unsqueeze(-1),
+                self._contact_sensor.data.current_contact_time[:, self.feet_contact_ids[i]].float().unsqueeze(-1),
+                self._contact_sensor.data.current_air_time[:, self.feet_contact_ids[i]].float().unsqueeze(-1),
+                ],
+                dim=-1,
+            ))
+        leg_obs = torch.stack(leg_obs, dim=1)
+
         return {
-            "observations": obs,
+            "base_obs": base_obs,
+            "leg_obs": leg_obs,
             "height_data": height_data
         }
 
@@ -312,7 +337,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # action rate
         action_rate = torch.sum(
-            torch.square(self._actions - self._previous_actions), dim=1
+            torch.square(self._actions - self._previous_actions), dim=(1, 2)
         )
         
         first_contact = self._contact_sensor.compute_first_contact(self.step_dt)[

@@ -92,13 +92,13 @@ SPIDER_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.25),  # start above the ground
+        pos=(0.0, 0.0, 0.26),  # start above the ground
         # Default angles: body-hip=0°, hip-upper=30°, upper-middle=-65°, middle--lower=-55°
         joint_pos={
             "joint_body_leg_hip_.*": math.radians(0.0),
-            "joint_leg_hip_leg_upper_.*": math.radians(-10.0),
-            "joint_leg_upper_leg_middle_.*": math.radians(-35.0),
-            "joint_leg_middle_leg_lower_.*": math.radians(-45.0),
+            "joint_leg_hip_leg_upper_.*": math.radians(20.0),
+            "joint_leg_upper_leg_middle_.*": math.radians(-55.0),
+            "joint_leg_middle_leg_lower_.*": math.radians(-55.0),
         },
     ),
     actuators={
