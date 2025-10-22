@@ -39,13 +39,13 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     episode_length_s = 60.0
     # - spaces definition
     #action_space = 6 legs 4 joints each
-    action_space = spaces.Box(-math.inf, -math.inf, shape=(6, 4), dtype=float)
+    action_space = spaces.Box(-math.inf, math.inf, shape=(6, 4), dtype=float)
     #observation_space = 51
     #observation_space = 87 # without height scanner
     #observation_space = 376 # with height scanner
     observation_space = spaces.Dict({
-        "base_obs": spaces.Box(-math.inf, math.inf, shape=(15, ), dtype=float),
-        "leg_obs": spaces.Box(-math.inf, math.inf, shape=(6, 24), dtype=float),
+        "base_obs": spaces.Box(-math.inf, math.inf, shape=(33, ), dtype=float),
+        "leg_obs": spaces.Box(-math.inf, math.inf, shape=(6, 33), dtype=float),
         "height_data": spaces.Box(-math.inf, math.inf, shape=(16, 16), dtype=float)
     })
     state_space = 0 #idk why this is here
@@ -144,16 +144,16 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 1
     
-    progress_reward_scale = 2500 * 0.8 # / 2# /2 for 1.4 pow
+    progress_reward_scale = 2500 * 0.8 / 10 # / 2# /2 for 1.4 pow
     progress_pow = 1#.4
     distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 2 * 2
+    velocity_alignment_reward_scale = 80 * 1.5
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1000
     death_penalty_scale = -2000
-    movement_reward_scale = 60 / 2
-    z_vel_reward_scale = -15 * 2 * 4
+    movement_reward_scale = 60 / 8
+    z_vel_reward_scale = -15 * 2 * 10
     ang_vel_reward_scale = -1.35 * 2
     joint_torque_reward_scale = -0.00003 * 50
     joint_accel_reward_scale = -8.0e-06 / 15
@@ -170,8 +170,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10
     flat_orientation_reward_scale = -80 * 5 * 3
-    body_height_reward_scale = 65 * 4
-    lower_leg_reward_scale = 200
+    body_height_reward_scale = 65 * 2
+    lower_leg_reward_scale = 50
     hip_penalty_scale = -30
     feet_under_body_penalty_scale = -6000 * 3 * 4
     body_penalty_radius = 0.175

@@ -34,73 +34,86 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         # Observation encoder
         self.base_encoder = nn.Sequential(
-            nn.Linear(base_dim, 256),
-            nn.LayerNorm(256),
+            nn.Linear(base_dim, 192),
+            nn.LayerNorm(192),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(192, 128),
             nn.ReLU(),
         )
 
-        # Height_data encoder CNN (16x16 to 256)
+        # Height_data encoder CNN (16x16 to 128)
         self.height_encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),   # 16x16 -> 8x8
+            nn.Conv2d(1, 8, kernel_size=3, stride=1, padding=0),   # 16 → 14
             nn.ReLU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # 8x8 -> 4x4
+            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=0),  # 14 → 12
             nn.ReLU(),
-            nn.Flatten(),  # 32 * 2 * 2 = 128
-            nn.Linear(256, 128),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=0), # 12 → 5
             nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=0), # 5 → 3
+            nn.ReLU(),
+            nn.AdaptiveAvgPool2d((2, 2)),  # <- new: compress to (B, 32, 2, 2)
+            nn.Flatten(),
         )
 
         # For fusion of both encoders
         self.fusion = nn.Sequential(
-            nn.Linear(128+128, 128), # 256 -> 128
+            nn.Linear(128 + 128, 192), # 256 -> 192
+            nn.ReLU(),
+            nn.Linear(192, 128),
             nn.ReLU(),
         )
         
         # Leg encoder (shared across legs)
         self.leg_encoder = nn.Sequential(
-            nn.Linear(leg_dims[1], 64),
-            nn.LayerNorm(64),
+            nn.Linear(leg_dims[1], 128),
+            nn.LayerNorm(128),
             nn.ReLU(),
-            nn.Linear(64, 32),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+        )
+
+        self.leg_net = nn.Sequential(
+            nn.Linear(128 + 64, 128), # fused + leg_encoded
             nn.ReLU(),
         )
 
         # Leg gru (weights shared, memory per leg)
         self.sequence_length = 32
-        self.leg_num_layers = 2
+        self.leg_num_layers = 1
         self.leg_hidden_size = 128
-        #self.leg_gru = nn.GRU(
-        #    input_size=128+32,
-        #    num_layers=self.leg_num_layers,
-        #    hidden_size=self.leg_hidden_size,
-        #    batch_first=True,
-        #)
+        self.leg_gru = nn.GRU(
+            input_size=128,
+            num_layers=self.leg_num_layers,
+            hidden_size=self.leg_hidden_size,
+            batch_first=True,
+        )
 
         # leg decoder
         self.leg_decoder = nn.Sequential(
-            nn.Linear(128+32, 128),
-            nn.ReLU(),
             nn.Linear(self.leg_hidden_size, 64), # 128 -> 64
-            nn.ReLU(),
-            nn.Linear(64, 32), # 64 -> 32
             nn.ReLU(),
         )
         
         # Policy Head
-        self.leg_policy_head = nn.Linear(32, self.num_leg_joints) # 32 -> action_dim (4)
+        self.leg_policy_head = nn.Sequential(
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, self.num_leg_joints),
+        )
+
         # Value Head
         self.value_num_layers = 1
         self.value_hidden_size = 128
-        self.value_gru = nn.GRU(input_size=128 + 32*2, # fused + legs_mean + legs_std 
+        self.value_gru = nn.GRU(input_size=64*6, # fused + legs_mean + legs_std 
                         num_layers=self.value_num_layers,
                         hidden_size=self.value_hidden_size, # 192 -> 128
                         batch_first=True)
         self.value_layer = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1)
         )
         self.log_std_parameter = nn.Parameter(torch.full(size=(self.num_leg_joints,), fill_value=init_log_std), requires_grad=True)
 
@@ -112,25 +125,6 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 nn.init.orthogonal_(m.weight, gain=gain)
                 nn.init.constant_(m.bias, 0)
 
-        def _make_grad_logger(name):
-            def hook(grad):
-                # grad is a tensor -> print its L2 norm
-                print(f"[HOOK] grad on {name} norm: {grad.norm().item():.6f}")
-            return hook
-
-        # 1️⃣ Register hooks for all base_encoder parameters
-        #for name, p in self.base_encoder.named_parameters():
-        #    if not hasattr(p, "_grad_hook_registered"):
-        #        p.register_hook(_make_grad_logger(f"base_encoder.{name}"))
-        #        p._grad_hook_registered = True
-
-        # 2️⃣ Hook on policy head (to see if actions get gradients)
-        #self.leg_policy_head.weight.register_hook(_make_grad_logger("leg_policy_head.weight"))
-        #self.leg_policy_head.bias.register_hook(_make_grad_logger("leg_policy_head.bias"))
-
-        # 3️⃣ Hook on log_std parameter
-        #self.log_std_parameter.register_hook(_make_grad_logger("log_std_parameter"))
-
 
     
     def get_specification(self):
@@ -138,7 +132,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             "rnn": {
                 "sequence_length": self.sequence_length,
                 "sizes": [
-                    #(self.leg_num_layers, self.num_envs, self.leg_hidden_size) for _ in range(self.num_legs)
+                    (self.leg_num_layers, self.num_envs, self.leg_hidden_size) for _ in range(self.num_legs)
                 ] +
                 [
                     (self.value_num_layers, self.num_envs, self.value_hidden_size)
@@ -166,53 +160,42 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
             # --- Base and height encoders ---
             base_encoded = self.base_encoder(base_obs)
-            """
-            # Optional one-time hook on the output activation itself
-            if torch.is_grad_enabled() and base_encoded.requires_grad and not hasattr(self, "_base_encoded_hook_registered"):
-                
-                # Base encoder hooks
-                for name, p in self.base_encoder.named_parameters():
-                    p.register_hook(lambda g, n=name: print(f"[HOOK] base_encoder.{n} grad norm: {g.norm().item()}"))
-
-                # Height encoder hooks
-                for name, p in self.height_encoder.named_parameters():
-                    p.register_hook(lambda g, n=name: print(f"[HOOK] height_encoder.{n} grad norm: {g.norm().item()}"))
-
-                # Leg encoder hooks
-                for name, p in self.leg_encoder.named_parameters():
-                    p.register_hook(lambda g, n=name: print(f"[HOOK] leg_encoder.{n} grad norm: {g.norm().item()}"))
-                
-            log_std_vals = self.log_std_parameter.data.tolist()
-            std_vals = self.log_std_parameter.data.exp().tolist()
-            print("[DBG] log_std:", log_std_vals)
-            print("[DBG] std:", std_vals)
-            """
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # add channel dim
             fused_global = self.fusion(torch.cat([base_encoded, height_encoded], dim=-1))  # [B, 128]
 
             # --- Per-leg encoding and GRU ---
+            # Flatten so each leg acts like different env
             leg_obs_flat = leg_obs_all.reshape(-1, leg_obs_all.shape[-1])  # [B * num_legs, leg_dim]
-            leg_encoded = self.leg_encoder(leg_obs_flat)
+            # Expand fused to match leg count
             fused_global_exp = fused_global.unsqueeze(1).expand(-1, self.num_legs, -1).contiguous()
             fused_global_flat = fused_global_exp.reshape(-1, fused_global_exp.shape[-1])  # [B * num_legs, 128]
-            leg_gru_input = torch.cat([fused_global_flat, leg_encoded], dim=-1)
-            #if terminated is not None:
-            #    terminated_flat = terminated.expand(-1, self.num_legs).reshape(-1)
-            #else:
-            #    terminated_flat = None
+            # expand terminated to match leg count
+            terminated_flat = terminated.expand(-1, self.num_legs).reshape(-1) if terminated is not None else None
+            # Flatten rnn_data for legs
+            leg_data_flat = torch.cat(rnn_data[:self.num_legs], dim=1)
+
+            # --- Running leg models ---
+            leg_encoded = self.leg_encoder(leg_obs_flat)
+            
+            leg_net_input = torch.cat([fused_global_flat, leg_encoded], dim=-1)
+
+            leg_gru_input = self.leg_net(leg_net_input)  # [B * num_legs, 128]
 
             # rnn_data[0]-rnn_data[5]
-            #leg_data_flat = torch.cat(rnn_data[:self.num_legs], dim=1)
-            #leg_rnn_output, leg_rnn_hidden = self.gru_rollout(
-            #    self.leg_gru,
-            #    self.leg_num_layers,
-            #    leg_gru_input,
-            #    terminated_flat,
-            #    leg_data_flat,
-            #)
-            #for i in range(self.num_legs):
-                #rnn_dict["rnn"].append(leg_rnn_hidden[:, i::self.num_legs, :])  # split hidden states per leg
-            leg_decoded_flat = self.leg_decoder(leg_gru_input)  # [B * num_legs, 32]
+            leg_rnn_output, leg_rnn_hidden = self.gru_rollout(
+                self.leg_gru,
+                self.leg_num_layers,
+                leg_gru_input,
+                terminated_flat,
+                leg_data_flat,
+            )
+            
+            leg_decoded_flat = self.leg_decoder(leg_rnn_output)  # [B * num_legs, 32]
+
+            # Reshape leg hidden states back to per-leg
+            for i in range(self.num_legs):
+                rnn_dict["rnn"].append(leg_rnn_hidden[:, i::self.num_legs, :])
+            # reshape leg decoded back to per-leg
             leg_decoded_all = leg_decoded_flat.view(-1, self.num_legs, leg_decoded_flat.shape[-1])  # [B, num_legs, 32]
 
             # --- Aggregate leg features for value ---
@@ -222,12 +205,14 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
             # --- Policy Head ---
             leg_action_mean = self.leg_policy_head(leg_decoded_flat)  # [B * num_legs, action_dim_per_leg]
-            mean_flat = leg_action_mean.view(-1, self.num_legs * self.num_leg_joints)  # [B, num_legs, action_dim]
+            actions_flat = leg_action_mean.view(-1, self.num_legs * self.num_leg_joints)  # [B, num_legs, action_dim]
 
 
             # Calc value output
             # Value GRU (global)
-            value_input = torch.cat([fused_global, leg_agg], dim=-1)  # [B, 192]
+            # Now cat all leg_decoded_all instead of leg_agg and dont include fused_global
+            value_input = leg_decoded_all.view(-1, self.num_legs * leg_decoded_all.shape[-1])
+            #torch.cat([fused_global, leg_agg], dim=-1)  # [B, 192]
             value_rnn_output, value_rnn_hidden = self.gru_rollout(
                 self.value_gru,
                 self.value_num_layers,
@@ -241,56 +226,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             value = self.value_layer(value_rnn_output)  # [B, 1]
 
             log_flat = self.log_std_parameter.repeat(self.num_legs)
-            self._policy_out = mean_flat, log_flat, rnn_dict
+            self._policy_out = actions_flat, log_flat, rnn_dict
             self._value_out = value, rnn_dict
-
-            """
-            # Only if you can access advantages/returns here — otherwise skip
-            with torch.no_grad():
-                base_zero = torch.zeros_like(base_obs)
-                base_zero_encoded = self.base_encoder(base_zero)
-                height_encoded_ = self.height_encoder(height_data.unsqueeze(1))
-                fused_zero = self.fusion(torch.cat([base_zero_encoded, height_encoded_], dim=-1))
-                fused_zero_exp = fused_zero.unsqueeze(1).expand(-1, self.num_legs, -1).contiguous()
-                fused_zero_flat = fused_zero_exp.reshape(-1, fused_zero_exp.shape[-1])
-                leg_gru_input_zero = torch.cat([fused_zero_flat, leg_encoded], dim=-1)
-
-                # Feed through leg GRU & decoder (single step)
-                leg_rnn_output_z, _ = self.leg_gru(leg_gru_input_zero.unsqueeze(1))
-                leg_decoded_z_flat = self.leg_decoder(leg_rnn_output_z.squeeze(1))
-
-                # Policy head output
-                mean_flat_z = self.leg_policy_head(leg_decoded_z_flat).view(-1, self.num_legs * self.num_leg_joints)
-
-                # Compare to original mean
-                diff = (mean_flat - mean_flat_z).abs().mean().item()
-                print("[ABLATION] mean difference when base=0 (avg abs):", diff)
-
-            with torch.no_grad():
-                height_zero = torch.zeros_like(height_data)
-                height_zero_encoded = self.height_encoder(height_zero.unsqueeze(1))  # keep channel dim
-                fused_height_zero = self.fusion(torch.cat([base_encoded, height_zero_encoded], dim=-1))
-                fused_height_zero_exp = fused_height_zero.unsqueeze(1).expand(-1, self.num_legs, -1).contiguous()
-                fused_height_zero_flat = fused_height_zero_exp.reshape(-1, fused_height_zero_exp.shape[-1])
-                leg_gru_input_height_zero = torch.cat([fused_height_zero_flat, leg_encoded], dim=-1)
-
-                # Feed through leg GRU & decoder
-                leg_rnn_output_hz, _ = self.leg_gru(leg_gru_input_height_zero.unsqueeze(1))
-                leg_decoded_hz_flat = self.leg_decoder(leg_rnn_output_hz.squeeze(1))
-
-                # Policy head output
-                mean_flat_hz = self.leg_policy_head(leg_decoded_hz_flat).view(-1, self.num_legs * self.num_leg_joints)
-
-                # Compare to original mean
-                diff_height = (mean_flat - mean_flat_hz).abs().mean().item()
-                print("[ABLATION] mean difference when height_data=0 (avg abs):", diff_height)
-            
-            with torch.no_grad():
-                leg_rnn_output_zero = torch.zeros_like(leg_rnn_output)  # zero leg RNN features
-                leg_decoded_zero = self.leg_decoder(leg_rnn_output_zero)
-                mean_flat_legs_zero = self.leg_policy_head(leg_decoded_zero).view(-1, self.num_legs * self.num_leg_joints)
-                diff_legs = (mean_flat - mean_flat_legs_zero).abs().mean().item()
-                print("[ABLATION] mean difference when legs=0 (avg abs):", diff_legs)"""
 
         if role == "policy":
             out = self._policy_out
@@ -302,7 +239,6 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             return out
 
     def gru_rollout(self, model, num_layers, states, terminated, hidden_state):
-        #print(f"states shape: {states.shape}, hidden_states shapes: {[h.shape for h in hidden_states]}")
         if self.training:
             # reshape to (batch, seq, features)
             rnn_input = states.view(-1, self.sequence_length, states.shape[-1])

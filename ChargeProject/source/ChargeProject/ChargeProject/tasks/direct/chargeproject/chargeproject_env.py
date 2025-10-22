@@ -64,8 +64,6 @@ class ChargeprojectEnv(DirectRLEnv):
         )
         self.lower_leg_body_ids, _ = self._robot.find_bodies(self.cfg.lower_leg_names)
         self.hip_joint_ids, _ = self._robot.find_joints(self.cfg.hip_joint_names)
-        self.middle_joint_ids, _ = self._robot.find_joints(self.cfg.middle_leg_joint_names)
-        self.lower_joint_ids, _ = self._robot.find_joints(self.cfg.lower_leg_joint_names)
         self.feet_body_ids, _ = self._robot.find_bodies(self.cfg.foot_names)
         self.leg_joint_ids = []
         self.feet_contact_ids = []
@@ -240,6 +238,7 @@ class ChargeprojectEnv(DirectRLEnv):
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
                 self._robot.data.projected_gravity_b,
+                self._robot.data.body_com_pos_b[:, self.feet_body_ids].view(self.num_envs, -1),
                 target_unit_vector,
                 target_distance,
                 next_target_unit_vector,
@@ -250,12 +249,11 @@ class ChargeprojectEnv(DirectRLEnv):
         # Concatenate the selected observations into a single tensor.
         leg_obs = []
         for i in range(self.action_space.shape[1]):
+            cycled_ids = self.feet_body_ids[i:] + self.feet_body_ids[:i]
             leg_obs.append(torch.cat(
                 [
-                self._robot.data.root_lin_vel_b,
-                self._robot.data.root_ang_vel_b,
-                self._robot.data.projected_gravity_b,
-                self._robot.data.joint_pos[:, self.leg_joint_ids[i]],
+                self._robot.data.body_com_pos_b[:, cycled_ids].view(self.num_envs, -1),
+                self._robot.data.joint_pos[:, self.leg_joint_ids[i]] - self._robot.data.default_joint_pos[:, self.leg_joint_ids[i]],
                 self._robot.data.joint_vel[:, self.leg_joint_ids[i]],
                 self.actions[:, i],
                 self.is_contact[:, self.feet_contact_ids[i]].float().unsqueeze(-1),
@@ -360,7 +358,7 @@ class ChargeprojectEnv(DirectRLEnv):
             self._contact_sensor.data.current_contact_time[:, self.undesired_contact_ids]
         , dim=1)
         # If 3 or more feet are in contact, consider it stable
-        stable_contact = torch.clamp(torch.sum(self.is_contact[:, self.feet_contact_ids], dim=1), max=3.0)
+        stable_contact = (torch.sum(self.is_contact[:, self.feet_contact_ids], dim=1) >= 3).float()
 
         # flat orientation
         flat_orientation = torch.sum(
