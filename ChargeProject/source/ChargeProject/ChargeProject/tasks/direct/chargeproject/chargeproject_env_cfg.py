@@ -178,7 +178,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     feet_ground_time_reward_scale = 40
     feet_ground_time_target = 0.4 # set to 0.4 after start (was 0.7 but not sure if this matters)
     
-    undesired_contact_reward_scale = -100
+    undesired_contact_reward_scale = -50
     undesired_contact_time_reward_scale = -15
     desired_contact_reward_scale = 10 * 4 # add (*4) after start
     flat_orientation_reward_scale = -1200
