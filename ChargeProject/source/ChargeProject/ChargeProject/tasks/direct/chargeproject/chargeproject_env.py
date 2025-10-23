@@ -65,6 +65,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self.lower_leg_body_ids, _ = self._robot.find_bodies(self.cfg.lower_leg_names)
         self.hip_joint_ids, _ = self._robot.find_joints(self.cfg.hip_joint_names)
         self.feet_body_ids, _ = self._robot.find_bodies(self.cfg.foot_names)
+        self.hip_body_ids = []
         self.leg_joint_ids = []
         self.feet_contact_ids = []
         self.dof_idx = []
@@ -75,6 +76,7 @@ class ChargeprojectEnv(DirectRLEnv):
             vals.append(self._robot.find_bodies(f".*middle_{i}")[0][0])
             vals.append(self._robot.find_bodies(f".*lower_{i}")[0][0])
             self.leg_joint_ids.append(vals)
+            self.hip_body_ids.append(vals[0])
             self.feet_contact_ids.append(self._contact_sensor.find_bodies(f".*foot_{i}")[0][0])
             self.dof_idx.extend(vals)
 
@@ -231,14 +233,18 @@ class ChargeprojectEnv(DirectRLEnv):
         ).clip(-1.0, 1.0)
         # turn height data into a (16, 16) grid
         height_data = height_data.view(self.num_envs, 16, 16)
+        
+        base_quat_w = self._robot.data.root_quat_w
 
+        quat_expanded = base_quat_w[:, None, :].expand(-1, len(self.feet_body_ids), -1)
+        foot_vectors_rotated = math_utils.quat_apply(quat_expanded, self._robot.data.body_com_pos_b[:, self.feet_body_ids])
         # Concatenate the selected observations into a single tensor.
         base_obs = torch.cat(
             [
                 self._robot.data.root_lin_vel_b,
                 self._robot.data.root_ang_vel_b,
                 self._robot.data.projected_gravity_b,
-                self._robot.data.body_com_pos_b[:, self.feet_body_ids].view(self.num_envs, -1),
+                foot_vectors_rotated.view(self.num_envs, -1),
                 target_unit_vector,
                 target_distance,
                 next_target_unit_vector,
@@ -247,14 +253,25 @@ class ChargeprojectEnv(DirectRLEnv):
             dim=-1,
         )
         # Concatenate the selected observations into a single tensor.
+        
+        # hip positions (vec in direction)
         leg_obs = []
         for i in range(self.action_space.shape[1]):
-            cycled_ids = self.feet_body_ids[i:] + self.feet_body_ids[:i]
+            # rotate position vectors
+            hip_vec_rotated = math_utils.quat_apply(base_quat_w, self._robot.data.body_com_pos_b[:, self.hip_body_ids[i]])
+            cycled_ids = self.feet_body_ids[i:] + self.feet_body_ids[:i] # Cycle so current leg is first
+            foot_vec_rotated = math_utils.quat_apply(quat_expanded, self._robot.data.body_com_pos_b[:, cycled_ids])
+            # offset all feet by current leg foot position (and remove current position because it's zero)
+            foot_vec_rotated = foot_vec_rotated - foot_vec_rotated[:, 0:1, :]
+            foot_vec_rotated = foot_vec_rotated[:, 1:, :]  # remove the zero vector for current foot
+
+
             leg_obs.append(torch.cat(
                 [
-                self._robot.data.body_com_pos_b[:, cycled_ids].view(self.num_envs, -1),
                 self._robot.data.joint_pos[:, self.leg_joint_ids[i]] - self._robot.data.default_joint_pos[:, self.leg_joint_ids[i]],
                 self._robot.data.joint_vel[:, self.leg_joint_ids[i]],
+                hip_vec_rotated, # hip position vector
+                foot_vec_rotated.view(self.num_envs, -1), # relative foot positions of all feet
                 self.actions[:, i],
                 self.is_contact[:, self.feet_contact_ids[i]].float().unsqueeze(-1),
                 self._contact_sensor.data.current_contact_time[:, self.feet_contact_ids[i]].float().unsqueeze(-1),

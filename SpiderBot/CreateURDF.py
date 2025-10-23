@@ -13,9 +13,9 @@ foot_radius = np.sqrt(2 * body_height**2) / 2
 
 # Joint parameters 
 # min, max, offset, effort (N*m),
-hip_info = [-45, 45, 0, 45]
-upper_info = [-20, 50, 0, 45]
-middle_info = [-95, -5, 0, 105]
+hip_info = [-45, 45, 0, 95]
+upper_info = [-20, 50, 0, 75]
+middle_info = [-95, -5, 0, 115]
 lower_info = [-85, -5, 0, 65]
 
 # EFFORT, VELOCITY CHANGE IN spider_robot.py
