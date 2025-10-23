@@ -460,17 +460,17 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Time since full step penalty
         # Subtract time from counters
-        self.feet_step_up_counters -= self.step_dt * (~feet_in_contact).float()
-        self.feet_step_down_counters -= self.step_dt * feet_in_contact.float()
+        self.feet_step_up_counters -= self.step_dt * (feet_in_contact).float()
+        self.feet_step_down_counters -= self.step_dt * (~feet_in_contact).float()
         # Recover time when foot is in desired state
-        self.feet_step_up_counters += self.step_dt * feet_in_contact.float() * self.cfg.feet_step_time_multiplier
-        self.feet_step_down_counters += self.step_dt * (~feet_in_contact).float() * self.cfg.feet_step_time_multiplier
+        self.feet_step_up_counters += self.step_dt * (~feet_in_contact).float() * self.cfg.feet_step_time_multiplier
+        self.feet_step_down_counters += self.step_dt * (feet_in_contact).float() * self.cfg.feet_step_time_multiplier
         # Clamp between -step_penalty_cap and 0
         self.feet_step_up_counters = torch.clamp(self.feet_step_up_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
         self.feet_step_down_counters = torch.clamp(self.feet_step_down_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
 
-        self.feet_up_step_counter_penalty = torch.mean(torch.clamp(self.feet_step_up_counters, max=0), dim=1)
-        self.feet_down_step_counter_penalty = torch.mean(torch.clamp(self.feet_step_down_counters, max=0), dim=1)
+        self.feet_up_step_counter_penalty = -torch.mean(torch.clamp(self.feet_step_up_counters, max=0), dim=1)
+        self.feet_down_step_counter_penalty = -torch.mean(torch.clamp(self.feet_step_down_counters, max=0), dim=1)
 
 
         # Penalty for leg joints having angle above 0 radians

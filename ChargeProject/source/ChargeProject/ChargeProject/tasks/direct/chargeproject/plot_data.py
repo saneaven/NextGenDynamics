@@ -114,15 +114,15 @@ try:
         ax.autoscale_view()
         
         # Redraw the canvas
-        fig.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust for legend
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+        #fig.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust for legend
+        #fig.canvas.draw()
+        #fig.canvas.flush_events()
         # print the most recent reward values to console
-        for tag_name, line in lines.items():
-            xdata = line.get_xdata()
-            ydata = line.get_ydata()
-            if len(xdata) > 0:
-                print(f"{tag_name}: {ydata[-1]:.2f}")
+        #for tag_name, line in lines.items():
+        #    xdata = line.get_xdata()
+        #    ydata = line.get_ydata()
+        #    if len(xdata) > 0:
+        #        print(f"{tag_name}: {ydata[-1]:.2f}")
 
         plt.pause(POLL_INTERVAL)
 
