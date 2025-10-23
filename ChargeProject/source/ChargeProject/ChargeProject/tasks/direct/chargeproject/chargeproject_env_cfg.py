@@ -101,7 +101,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024 * 3),#0),
+        num_envs=int(1024*0.75),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -151,7 +151,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # start, 5.5k steps: After init comments below
     #                   joint_leg_middle_leg_lower_ = 160 
     #                   Stopped after it starts "jumping" (2025-10-23_15-28-12_ppo_torch, v1.1.0)
-    # main, 15k steps: After start comments below
     
 
     #  1e-4 then set to 1e-3 for faster learning
@@ -182,14 +181,14 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     desired_contact_reward_scale = 10 * 4 # add (*4) after start
     flat_orientation_reward_scale = -1200
     body_height_reward_scale = 114 / 2# * 4 # Remove (*4) after init # add (/2) after start
-    lower_leg_reward_scale = 200 / 10 # add /10 after start
+    lower_leg_reward_scale = 200 / 10 # add (/10) after start
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -72000
+    feet_under_body_penalty_scale = -72000 * 2 # add (*2) after start
     body_penalty_radius = 0.175
 
     # rewards positive joint velocity when time from contact
-    step_reward_scale = 50 * 2 # Set 50 after init (from 0) # Add (*2) after main
-    step_up_time_end = 0.2 # set to 0.2 after main (was 0.55)
+    step_reward_scale = 50 * 4 # Set 50 after init (from 0) # Add (*4) after start
+    step_up_time_end = 0.2 # set to 0.2 after start (was 0.55)
     # linear scale of penalty if leg doesn't step in this time
     step_length_penalty_scale = -15
     step_penalty_start = 1.3
@@ -197,8 +196,8 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     grounded_length_penalty_scale = -15
     grounded_penalty_start = 2.0
     grounded_penalty_cap = 2.0
-    feet_up_step_time_penalty_scale = -40 # set -40 after main (from 0)
-    feet_down_step_time_penalty_scale = -40 # set -40 after main (from 0)
+    feet_up_step_time_penalty_scale = -60 # set -40 after start (from 0)
+    feet_down_step_time_penalty_scale = -60 # set -40 after start (from 0)
     feet_step_time_multiplier = 2.0 # makes more going up than being on ground
     feet_step_time_target = 0.4
     feet_step_time_leeway = 0.6 # clamped out on positive

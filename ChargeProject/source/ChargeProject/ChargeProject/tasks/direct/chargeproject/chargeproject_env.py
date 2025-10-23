@@ -80,8 +80,9 @@ class ChargeprojectEnv(DirectRLEnv):
             self.feet_contact_ids.append(self._contact_sensor.find_bodies(f".*foot_{i}")[0][0])
             self.dof_idx.extend(vals)
 
-        self.feet_step_up_counters = torch.zeros(self.num_envs, len(self.feet_body_ids), device=self.device)
-        self.feet_step_down_counters = torch.zeros(self.num_envs, len(self.feet_body_ids), device=self.device)
+        
+        self.feet_step_up_counters = feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
+        self.feet_step_down_counters = feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
@@ -460,11 +461,11 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Time since full step penalty
         # Subtract time from counters
-        self.feet_step_up_counters -= self.step_dt * (feet_in_contact).float()
-        self.feet_step_down_counters -= self.step_dt * (~feet_in_contact).float()
+        self.feet_step_up_counters -= self.step_dt * (~feet_in_contact).float()
+        self.feet_step_down_counters -= self.step_dt * (feet_in_contact).float()
         # Recover time when foot is in desired state
-        self.feet_step_up_counters += self.step_dt * (~feet_in_contact).float() * self.cfg.feet_step_time_multiplier
-        self.feet_step_down_counters += self.step_dt * (feet_in_contact).float() * self.cfg.feet_step_time_multiplier
+        self.feet_step_up_counters += self.step_dt * (feet_in_contact).float() * self.cfg.feet_step_time_multiplier
+        self.feet_step_down_counters += self.step_dt * (~feet_in_contact).float() * self.cfg.feet_step_time_multiplier
         # Clamp between -step_penalty_cap and 0
         self.feet_step_up_counters = torch.clamp(self.feet_step_up_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
         self.feet_step_down_counters = torch.clamp(self.feet_step_down_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
