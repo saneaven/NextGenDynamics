@@ -80,6 +80,8 @@ class ChargeprojectEnv(DirectRLEnv):
             self.feet_contact_ids.append(self._contact_sensor.find_bodies(f".*foot_{i}")[0][0])
             self.dof_idx.extend(vals)
 
+        self.feet_step_up_counters = torch.zeros(self.num_envs, len(self.feet_body_ids), device=self.device)
+        self.feet_step_down_counters = torch.zeros(self.num_envs, len(self.feet_body_ids), device=self.device)
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
@@ -312,7 +314,7 @@ class ChargeprojectEnv(DirectRLEnv):
         else:
             progress_reward = difference
         #progress_reward = difference
-        progress_reward *= torch.log1p(self._targets_reached/2) + 1
+        #progress_reward *= torch.log1p(self._targets_reached/2) + 1
 
         # Reward for moving (average of buffer is = to this)
         movement_reward = torch.linalg.norm(self._robot.data.root_lin_vel_b[:, :2], dim=1)
@@ -323,11 +325,9 @@ class ChargeprojectEnv(DirectRLEnv):
            self._robot.data.root_lin_vel_w[:, :2], target_unit_vector, dim=1
         )
 
-        # Bonus for get_ting to target (1 reward for first target, 1.5 for second, 2 for third, etc...)
+        # Bonus for getting to target
         target_reward = torch.zeros(self.num_envs, device=self.device)
-        target_reward[reached_target_ids] = (
-            0.5 + self._targets_reached[reached_target_ids] * 0.5
-        )
+        target_reward[reached_target_ids] = torch.log1p(self._targets_reached[reached_target_ids]) + 1
 
 
         # died if gravity is near positive (flipped over)
@@ -360,14 +360,14 @@ class ChargeprojectEnv(DirectRLEnv):
         ]
         last_air_time = self._contact_sensor.data.last_air_time[:, self.feet_contact_ids]
         feet_air_time = torch.sum((last_air_time - self.cfg.feet_air_time_target) * first_contact, dim=1)
-        feet_air_time = torch.clamp(feet_air_time, max=self.cfg.feet_air_time_max)
+        feet_air_time = torch.clamp(feet_air_time, max=0)
         
         first_air = self._contact_sensor.compute_first_air(self.step_dt)[
             :, self.feet_contact_ids
         ]
         last_contact_time = self._contact_sensor.data.last_contact_time[:, self.feet_contact_ids]
         feet_ground_time = torch.sum((last_contact_time - self.cfg.feet_ground_time_target) * first_air, dim=1)
-        feet_ground_time = torch.clamp(feet_ground_time, max=self.cfg.feet_ground_time_max)
+        feet_ground_time = torch.clamp(feet_ground_time, max=0)
 
         # undesired contacts
         undesired_contacts = torch.sum(self.is_contact[:, self.undesired_contact_ids], dim=1)
@@ -458,6 +458,21 @@ class ChargeprojectEnv(DirectRLEnv):
             torch.clamp(current_contact_time - self.cfg.grounded_penalty_start, min=0.0, max=self.cfg.grounded_penalty_cap + self.cfg.grounded_penalty_start), dim=1
         )
 
+        # Time since full step penalty
+        # Subtract time from counters
+        self.feet_step_up_counters -= self.step_dt * (~feet_in_contact).float()
+        self.feet_step_down_counters -= self.step_dt * feet_in_contact.float()
+        # Recover time when foot is in desired state
+        self.feet_step_up_counters += self.step_dt * feet_in_contact.float() * self.cfg.feet_step_time_multiplier
+        self.feet_step_down_counters += self.step_dt * (~feet_in_contact).float() * self.cfg.feet_step_time_multiplier
+        # Clamp between -step_penalty_cap and 0
+        self.feet_step_up_counters = torch.clamp(self.feet_step_up_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
+        self.feet_step_down_counters = torch.clamp(self.feet_step_down_counters, min=-self.cfg.feet_step_time_target, max=self.cfg.feet_step_time_leeway)
+
+        self.feet_up_step_counter_penalty = torch.mean(torch.clamp(self.feet_step_up_counters, max=0), dim=1)
+        self.feet_down_step_counter_penalty = torch.mean(torch.clamp(self.feet_step_down_counters, max=0), dim=1)
+
+
         # Penalty for leg joints having angle above 0 radians
         joint_pos = self._robot.data.joint_pos[:, self.dof_idx]  # [envs, num_joints]
         joint_default = self._robot.data.default_joint_pos[:, self.dof_idx]  # [num_joints] or 0 if centered
@@ -492,6 +507,8 @@ class ChargeprojectEnv(DirectRLEnv):
             "step_reward": step_reward * self.cfg.step_reward_scale * self.step_dt,
             "step_length_penalty": step_length_penalty * self.cfg.step_length_penalty_scale * self.step_dt,
             "grounded_length_penalty": grounded_length_penalty * self.cfg.grounded_length_penalty_scale * self.step_dt,
+            "feet_up_step_counter_penalty": self.feet_up_step_counter_penalty * self.cfg.feet_up_step_time_penalty_scale * self.step_dt,
+            "feet_down_step_counter_penalty": self.feet_down_step_counter_penalty * self.cfg.feet_down_step_time_penalty_scale * self.step_dt,
             "joint_default_penalty": joint_default_penalty * self.cfg.joint_default_penalty * self.step_dt,
         }
 

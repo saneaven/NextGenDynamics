@@ -137,10 +137,10 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         self.debug_i = 0 
 
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=gain)
-                nn.init.constant_(m.bias, 0)
+        #for m in self.modules():
+        #    if isinstance(m, nn.Linear):
+        #        nn.init.orthogonal_(m.weight, gain=gain)
+        #        nn.init.constant_(m.bias, 0)
 
 
     

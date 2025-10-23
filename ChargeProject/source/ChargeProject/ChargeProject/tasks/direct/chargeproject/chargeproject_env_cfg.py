@@ -101,7 +101,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024),#0),
+        num_envs=int(1024 * 3),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )
@@ -127,7 +127,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
 
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
-    success_tolerance = 1 # 0.25  # meters
+    success_tolerance = 0.5 # 0.25  # meters
     time_out_per_target = 10 #5.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
     base_on_ground_time = 1.0 #seconds before death if base is on ground
@@ -140,41 +140,56 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 1
     
-    progress_reward_scale = 2500 * 0.8 * 6 # / 2# /2 for 1.4 pow
+
+    # Training stages:
+    # Removed scaling progress/velocity rewards by number of targets reached
+    # init, 2k steps: Learning rate 1e-4 (learning rate may be able to start at 1e-3)
+    #                 joint_leg_middle_leg_lower_ = 125 (may not be needed)
+    #                 Stopped training after velocity/progress became noticeable (2025-10-22_19-49-57_ppo_torch, v1.0.0)
+    # init, 3k steps: Learning rate to 1e-3
+    #                 Stopped training after height ~equal init height (2025-10-22_20-42-36_ppo_torch, v1.0.1)
+    # start, 5.5k steps: After init comments below
+    #                   joint_leg_middle_leg_lower_ = 160 
+    #                   Stopped after it starts "jumping" (2025-10-23_15-28-12_ppo_torch, v1.1.0)
+    # main, 15k steps: After start comments below
+    
+
+    #  1e-4 then set to 1e-3 for faster learning
+    progress_reward_scale = 2000# * 2 # Remove (*2) after init
     progress_pow = 1#.4
     distance_lookback = 10
 
-    velocity_alignment_reward_scale = 80 * 3
+    velocity_alignment_reward_scale = 120# * 4 # Remove (*4) after init
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1000
     death_penalty_scale = -2000
-    movement_reward_scale = 60 / 2
-    z_vel_reward_scale = -15 * 2 * 4
-    ang_vel_reward_scale = -1.35 * 2
-    joint_torque_reward_scale = -0.00003 * 50
-    joint_accel_reward_scale = -8.0e-06 / 15
-    dof_vel_reward_scale = -0.0006 * 10
-    action_rate_reward_scale = -1.5
-    feet_air_time_reward_scale = 160 / 6
-    feet_air_time_target = 0.7
-    feet_air_time_max = 0.2
-    feet_ground_time_reward_scale = 160 / 4
-    feet_ground_time_target = 0.7
-    feet_ground_time_max = 0.2
+    movement_reward_scale = 30
+    z_vel_reward_scale = -120 * 3 # add (*3) after start
+    ang_vel_reward_scale = -2.7
+
+    joint_torque_reward_scale = -0.0015 
+    joint_accel_reward_scale = -5.3e-07 / 6 # add /6 after start
+    dof_vel_reward_scale = -0.006 / 8 # add /8 after start
+    action_rate_reward_scale = -1.5 / 2 # add /2 after start
+
+    feet_air_time_reward_scale = 26.6
+    feet_air_time_target = 0.4 # set to 0.4 after start (was 0.7 but not sure if this matters)
+    feet_ground_time_reward_scale = 40
+    feet_ground_time_target = 0.4 # set to 0.4 after start (was 0.7 but not sure if this matters)
     
-    undesired_contact_reward_scale = -25 * 2
+    undesired_contact_reward_scale = -100
     undesired_contact_time_reward_scale = -15
-    desired_contact_reward_scale = 10
-    flat_orientation_reward_scale = -80 * 5 * 3
-    body_height_reward_scale = 65 * 4
-    lower_leg_reward_scale = 200
+    desired_contact_reward_scale = 10 * 4 # add (*4) after start
+    flat_orientation_reward_scale = -1200
+    body_height_reward_scale = 114 / 2# * 4 # Remove (*4) after init # add (/2) after start
+    lower_leg_reward_scale = 200 / 10 # add /10 after start
     hip_penalty_scale = -30
-    feet_under_body_penalty_scale = -6000 * 3 * 4
+    feet_under_body_penalty_scale = -72000
     body_penalty_radius = 0.175
 
     # rewards positive joint velocity when time from contact
-    step_reward_scale = 0#75
-    step_up_time_end = 0.55
+    step_reward_scale = 50 * 2 # Set 50 after init (from 0) # Add (*2) after main
+    step_up_time_end = 0.2 # set to 0.2 after main (was 0.55)
     # linear scale of penalty if leg doesn't step in this time
     step_length_penalty_scale = -15
     step_penalty_start = 1.3
@@ -182,7 +197,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     grounded_length_penalty_scale = -15
     grounded_penalty_start = 2.0
     grounded_penalty_cap = 2.0
+    feet_up_step_time_penalty_scale = -40 # set -40 after main (from 0)
+    feet_down_step_time_penalty_scale = -40 # set -40 after main (from 0)
+    feet_step_time_multiplier = 2.0 # makes more going up than being on ground
+    feet_step_time_target = 0.4
+    feet_step_time_leeway = 0.6 # clamped out on positive
 
-    
     joint_default_penalty = 0
 
