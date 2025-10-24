@@ -81,8 +81,8 @@ class ChargeprojectEnv(DirectRLEnv):
             self.dof_idx.extend(vals)
 
         
-        self.feet_step_up_counters = feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
-        self.feet_step_down_counters = feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
+        self.feet_step_up_counters = self.cfg.feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
+        self.feet_step_down_counters = self.cfg.feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)

@@ -151,8 +151,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # start, 5.5k steps: After init comments below
     #                   joint_leg_middle_leg_lower_ = 160 
     #                   Stopped after it starts "jumping" (2025-10-23_15-28-12_ppo_torch, v1.1.0)
-    # main, _k steps: Learning rate to 1e-4
-    #                 After start comments below
+    # main, 33k steps: Learning rate to 1e-4
+    #                  After start comments below (2025-10-23_13-09-24_ppo_torch, spiderbot_v1.2.0)
+    #
     
 
     #  1e-4 then set to 1e-3 for faster learning
