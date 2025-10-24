@@ -28,7 +28,7 @@ agent:
   mini_batches: 32
   discount_factor: 0.99
   lambda: 0.95
-  learning_rate: 1.0e-03
+  learning_rate: 1.0e-04
   # Can be changed in config
   #learning_rate_scheduler: KLAdaptiveLR
   #learning_rate_scheduler_kwargs:
