@@ -262,7 +262,8 @@ class ChargeprojectEnv(DirectRLEnv):
         base_quat_w = self._robot.data.root_quat_w
 
         quat_expanded = base_quat_w[:, None, :].expand(-1, len(self.feet_body_ids), -1)
-        foot_vectors_rotated = math_utils.quat_apply(quat_expanded, self._robot.data.body_com_pos_b[:, self.feet_body_ids])
+        feet_pos = self._robot.data.body_pos_w[:, self.feet_body_ids] - (self._robot.data.root_pos_w).unsqueeze(1)
+        foot_vectors_rotated = math_utils.quat_apply(quat_expanded, feet_pos)
         # Concatenate the selected observations into a single tensor.
         base_obs = torch.cat(
             [
@@ -283,13 +284,14 @@ class ChargeprojectEnv(DirectRLEnv):
         leg_obs = []
         for i in range(self.action_space.shape[1]):
             # rotate position vectors
-            hip_vec_rotated = math_utils.quat_apply(base_quat_w, self._robot.data.body_com_pos_b[:, self.hip_body_ids[i]])
+            hip_pos = self._robot.data.body_pos_w[:, self.hip_body_ids[i]] - self._robot.data.root_pos_w
+            hip_vec_rotated = math_utils.quat_apply(base_quat_w, hip_pos)
             cycled_ids = self.feet_body_ids[i:] + self.feet_body_ids[:i] # Cycle so current leg is first
-            foot_vec_rotated = math_utils.quat_apply(quat_expanded, self._robot.data.body_com_pos_b[:, cycled_ids])
+            feet_pos = self._robot.data.body_pos_w[:, cycled_ids] - (self._robot.data.root_pos_w).unsqueeze(1)
+            foot_vec_rotated = math_utils.quat_apply(quat_expanded, feet_pos)
             # offset all feet by current leg foot position (and remove current position because it's zero)
             foot_vec_rotated = foot_vec_rotated - foot_vec_rotated[:, 0:1, :]
             foot_vec_rotated = foot_vec_rotated[:, 1:, :]  # remove the zero vector for current foot
-
 
             leg_obs.append(torch.cat(
                 [
