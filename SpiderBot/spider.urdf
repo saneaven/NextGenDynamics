@@ -3,15 +3,15 @@
   <link name="body">
     <visual>
       
-      <geometry><cylinder radius="0.21875" length="0.025"/></geometry>
+      <geometry><cylinder radius="0.2" length="0.025"/></geometry>
     </visual>
     <collision>
       
-      <geometry><cylinder radius="0.21875" length="0.025"/></geometry>
+      <geometry><cylinder radius="0.2" length="0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="9.019807"/>
-      <inertia ixx="2.158059e-01" iyy="1.083727e-01" izz="1.083727e-01" ixy="0" ixz="0" iyz="0"/>
+      <mass value="21.991149"/>
+      <inertia ixx="4.398230e-01" iyy="2.210569e-01" izz="2.210569e-01" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <link name="leg_hip_0">
@@ -24,17 +24,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_0" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_0"/>
-    <origin xyz="0.21875 0.0 0" rpy="0 0 0.0"/>
+    <origin xyz="0.2 0.0 0" rpy="0 0 0.0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_0">
     <visual>
@@ -46,8 +45,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_0" type="revolute">
@@ -55,8 +54,7 @@
     <child link="leg_upper_0"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_0">
     <visual>
@@ -68,8 +66,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_0" type="revolute">
@@ -77,8 +75,7 @@
     <child link="leg_middle_0"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_0">
     <visual>
@@ -90,8 +87,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_0" type="revolute">
@@ -99,8 +96,7 @@
     <child link="leg_lower_0"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_0">
     <visual>
@@ -112,8 +108,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_0" type="revolute">
@@ -121,7 +117,7 @@
     <child link="leg_foot_0"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
   <link name="leg_hip_1">
     <visual>
@@ -133,17 +129,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_1" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_1"/>
-    <origin xyz="0.10937500000000003 0.18944305707784595 0" rpy="0 0 1.0471975511965976"/>
+    <origin xyz="0.10000000000000003 0.17320508075688773 0" rpy="0 0 1.0471975511965976"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_1">
     <visual>
@@ -155,8 +150,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_1" type="revolute">
@@ -164,8 +159,7 @@
     <child link="leg_upper_1"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_1">
     <visual>
@@ -177,8 +171,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_1" type="revolute">
@@ -186,8 +180,7 @@
     <child link="leg_middle_1"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_1">
     <visual>
@@ -199,8 +192,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_1" type="revolute">
@@ -208,8 +201,7 @@
     <child link="leg_lower_1"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_1">
     <visual>
@@ -221,8 +213,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_1" type="revolute">
@@ -230,7 +222,7 @@
     <child link="leg_foot_1"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
   <link name="leg_hip_2">
     <visual>
@@ -242,17 +234,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_2" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_2"/>
-    <origin xyz="-0.10937499999999994 0.18944305707784598 0" rpy="0 0 2.0943951023931953"/>
+    <origin xyz="-0.09999999999999996 0.17320508075688776 0" rpy="0 0 2.0943951023931953"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_2">
     <visual>
@@ -264,8 +255,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_2" type="revolute">
@@ -273,8 +264,7 @@
     <child link="leg_upper_2"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_2">
     <visual>
@@ -286,8 +276,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_2" type="revolute">
@@ -295,8 +285,7 @@
     <child link="leg_middle_2"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_2">
     <visual>
@@ -308,8 +297,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_2" type="revolute">
@@ -317,8 +306,7 @@
     <child link="leg_lower_2"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_2">
     <visual>
@@ -330,8 +318,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_2" type="revolute">
@@ -339,7 +327,7 @@
     <child link="leg_foot_2"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
   <link name="leg_hip_3">
     <visual>
@@ -351,17 +339,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_3" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_3"/>
-    <origin xyz="-0.21875 2.678914873134835e-17 0" rpy="0 0 3.141592653589793"/>
+    <origin xyz="-0.2 2.4492935982947065e-17 0" rpy="0 0 3.141592653589793"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_3">
     <visual>
@@ -373,8 +360,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_3" type="revolute">
@@ -382,8 +369,7 @@
     <child link="leg_upper_3"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_3">
     <visual>
@@ -395,8 +381,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_3" type="revolute">
@@ -404,8 +390,7 @@
     <child link="leg_middle_3"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_3">
     <visual>
@@ -417,8 +402,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_3" type="revolute">
@@ -426,8 +411,7 @@
     <child link="leg_lower_3"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_3">
     <visual>
@@ -439,8 +423,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_3" type="revolute">
@@ -448,7 +432,7 @@
     <child link="leg_foot_3"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
   <link name="leg_hip_4">
     <visual>
@@ -460,17 +444,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_4" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_4"/>
-    <origin xyz="-0.1093750000000001 -0.18944305707784592 0" rpy="0 0 4.1887902047863905"/>
+    <origin xyz="-0.10000000000000009 -0.1732050807568877 0" rpy="0 0 4.1887902047863905"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_4">
     <visual>
@@ -482,8 +465,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_4" type="revolute">
@@ -491,8 +474,7 @@
     <child link="leg_upper_4"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_4">
     <visual>
@@ -504,8 +486,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_4" type="revolute">
@@ -513,8 +495,7 @@
     <child link="leg_middle_4"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_4">
     <visual>
@@ -526,8 +507,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_4" type="revolute">
@@ -535,8 +516,7 @@
     <child link="leg_lower_4"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_4">
     <visual>
@@ -548,8 +528,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_4" type="revolute">
@@ -557,7 +537,7 @@
     <child link="leg_foot_4"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
   <link name="leg_hip_5">
     <visual>
@@ -569,17 +549,16 @@
       <geometry><box size="0.025 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.018750"/>
-      <inertia ixx="1.953125e-06" iyy="1.953125e-06" izz="1.953125e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.109375"/>
+      <inertia ixx="1.139323e-05" iyy="1.139323e-05" izz="1.139323e-05" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_body_leg_hip_5" type="revolute">
     <parent link="body"/>
     <child link="leg_hip_5"/>
-    <origin xyz="0.10937499999999986 -0.18944305707784603 0" rpy="0 0 5.235987755982988"/>
+    <origin xyz="0.09999999999999987 -0.1732050807568878 0" rpy="0 0 5.235987755982988"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-0.9599310885968813" upper="0.9599310885968813" effort="12" velocity="12.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-0.7853981633974483" upper="0.7853981633974483" effort="45"/>
   </joint>
   <link name="leg_upper_5">
     <visual>
@@ -591,8 +570,8 @@
       <geometry><box size="0.125 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.093750"/>
-      <inertia ixx="9.765625e-06" iyy="1.269531e-04" izz="1.269531e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.546875"/>
+      <inertia ixx="5.696615e-05" iyy="7.405599e-04" izz="7.405599e-04" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_hip_leg_upper_5" type="revolute">
@@ -600,8 +579,7 @@
     <child link="leg_upper_5"/>
     <origin xyz="0.025 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30" velocity="15.0"/>
-    <dynamics damping="0.6" friction="0.3"/>
+    <limit lower="-1.3089969389957472" upper="1.3089969389957472" effort="30"/>
   </joint>
   <link name="leg_middle_5">
     <visual>
@@ -613,8 +591,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_upper_leg_middle_5" type="revolute">
@@ -622,8 +600,7 @@
     <child link="leg_middle_5"/>
     <origin xyz="0.125 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.3490658503988659" effort="22" velocity="15.0"/>
-    <dynamics damping="0.4" friction="0.2"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="22"/>
   </joint>
   <link name="leg_lower_5">
     <visual>
@@ -635,8 +612,8 @@
       <geometry><box size="0.175 0.025 0.025"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.131250"/>
-      <inertia ixx="1.367188e-05" iyy="3.417969e-04" izz="3.417969e-04" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.765625"/>
+      <inertia ixx="7.975260e-05" iyy="1.993815e-03" izz="1.993815e-03" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_middle_leg_lower_5" type="revolute">
@@ -644,8 +621,7 @@
     <child link="leg_lower_5"/>
     <origin xyz="0.175 0 0" rpy="0 0 0.0"/>
     <axis xyz="0 -1 0"/>
-    <limit lower="-1.5707963267948966" upper="0.7853981633974483" effort="11" velocity="15.0"/>
-    <dynamics damping="0.2" friction="0.1"/>
+    <limit lower="-1.5707963267948966" upper="-0.08726646259971647" effort="11"/>
   </joint>
   <link name="leg_foot_5">
     <visual>
@@ -657,8 +633,8 @@
       <geometry><sphere radius="0.01767766952966369"/></geometry>
     </collision>
     <inertial>
-      <mass value="0.027768"/>
-      <inertia ixx="3.471002e-06" iyy="3.471002e-06" izz="3.471002e-06" ixy="0" ixz="0" iyz="0"/>
+      <mass value="0.000000"/>
+      <inertia ixx="0.000000e+00" iyy="0.000000e+00" izz="0.000000e+00" ixy="0" ixz="0" iyz="0"/>
     </inertial>
   </link>
   <joint name="joint_leg_lower_foot_5" type="revolute">
@@ -666,6 +642,6 @@
     <child link="leg_foot_5"/>
     <origin xyz="0.175 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="0" upper="0" effort="0" velocity="0"/>
+    <limit lower="0" upper="0" effort="0"/>
   </joint>
 </robot>

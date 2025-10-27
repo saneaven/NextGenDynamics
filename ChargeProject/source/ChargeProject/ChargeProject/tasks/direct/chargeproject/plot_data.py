@@ -11,7 +11,7 @@ log_dir = None
 POLL_INTERVAL = 1
 # Window size for the moving average. Set to 1 to disable smoothing.
 SMOOTHING_WINDOW = 1
-#log_dir = r"G:\Code\NextGenDynamics\ChargeProject\logs\skrl\spiderbot\2025-10-17_21-37-31_ppo_torch"
+#log_dir = r"C:\School\NextGenDynamics\ChargeProject\logs\skrl\spiderbot\2025-10-21_10-22-17_ppo_torch"
 base_log_dir = "logs/skrl/spiderbot"
 
 
@@ -114,10 +114,18 @@ try:
         ax.autoscale_view()
         
         # Redraw the canvas
-        fig.tight_layout(rect=[0, 0, 0.85, 1]) # Adjust for legend
+        fig.tight_layout(rect=[0, 0, 0.9, 1]) # Adjust for legend
         fig.canvas.draw()
         fig.canvas.flush_events()
-        
+        # print the most recent reward values to console
+        """
+        for tag_name, line in lines.items():
+            xdata = line.get_xdata()
+            ydata = line.get_ydata()
+            if len(xdata) > 0:
+                print(f"{tag_name}: {ydata[-1]:.2f}")
+        """
+
         plt.pause(POLL_INTERVAL)
 
 except KeyboardInterrupt:
