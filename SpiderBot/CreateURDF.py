@@ -5,17 +5,17 @@ body_radius = 0.2
 body_height = 0.025
 
 leg_count = 6
-hip_size = 0.025
-upper_leg = 0.125
-middle_leg = 0.175
-lower_leg = 0.175
+hip_size = 0.035
+upper_leg = 0.225
+middle_leg = 0.25
+lower_leg = 0.225
 foot_radius = np.sqrt(2 * body_height**2) / 2
 
 # Joint parameters 
 # min, max, offset, effort (N*m),
 hip_info = [-45, 45, 0, 95]
-upper_info = [-20, 50, 0, 75]
-middle_info = [-95, -5, 0, 115]
+upper_info = [-15, 60, 0, 75]
+middle_info = [-105, -35, 0, 115]
 lower_info = [-85, -5, 0, 65]
 
 # EFFORT, VELOCITY CHANGE IN spider_robot.py
@@ -26,8 +26,8 @@ damping_mod = 1
 # I DONT THINK THESE MATTER, SET IN ISAAC SIM
 # Density in kg/m^3
 # PLA/plastic ~ 1200, Aluminum ~ 2700, Steel ~ 7850
-body_density = 7000.0
-leg_density = 7000.0
+body_density = 4000.0
+leg_density = 1000.0
 foot_density = 0.0
 
 # Turn first 3 limits to radians

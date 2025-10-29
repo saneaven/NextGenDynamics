@@ -34,28 +34,27 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         # Observation encoder
         self.obs_encoder = nn.Sequential(
             nn.Linear(obs_dim, 256),
-            nn.ReLU(),
+            nn.ELU(),
             nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.ELU(),
         )
 
         # Height_data encoder CNN (16x16 to 256)
         self.height_encoder = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),   # 16x16 -> 8x8
-            nn.ReLU(),
-            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # 8x8 -> 4x4
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2
-            nn.ReLU(),
-            nn.Flatten(),  # 32 * 2 * 2 = 128
-            nn.Linear(128, 128),
-            nn.ReLU(),
+            nn.Conv2d(1, 8, kernel_size=3, stride=2, padding=1),   # 16x16 -> 8x8, 512
+            nn.ELU(),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1),  # 8x8 -> 4x4, 256
+            nn.ELU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 4x4 -> 2x2, 128
+            nn.BatchNorm2d(32),
+            nn.ELU(),
+            nn.Flatten(), # 32 * 2 * 2 = 128
         )
 
         # For fusion of both encoders
         self.fusion = nn.Sequential(
             nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.ELU(),
         )
 
 
@@ -70,7 +69,8 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         )
 
         self.net = nn.Sequential(
-        )
+            nn.ELU()
+        )# check if end with relu
 
         self.policy_layer = nn.Linear(128, act_dim)
         self.value_layer = nn.Linear(128, 1)
@@ -78,10 +78,10 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
         self._shared_output = None
         
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.orthogonal_(m.weight, gain=0.6)
-                nn.init.constant_(m.bias, 0)
+        #for m in self.modules():
+        #    if isinstance(m, nn.Linear):
+        #        nn.init.orthogonal_(m.weight, gain=0.6)
+        #        nn.init.constant_(m.bias, 0)
 
     
     def get_specification(self):
@@ -90,15 +90,6 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
                 "sequence_length": self.sequence_length,
                 "sizes": [
                     (self.num_layers, self.num_envs, self.hidden_size),  # gru memory
-                ]
-            }
-        }
-        return {
-            "rnn": {
-                "sequence_length": self.sequence_length,
-                "sizes": [
-                    (self.num_layers, self.num_envs, self.hidden_size),  # hx
-                    (self.num_layers, self.num_envs, self.hidden_size),  # cx
                 ]
             }
         }
@@ -137,7 +128,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             self._shared_output = net, rnn_dict
 
         if role == "policy":
-            mean = self.policy_layer(net)
+            mean = torch.tanh(self.policy_layer(net))
             return mean, self.log_std_parameter, rnn_dict
 
         elif role == "value":

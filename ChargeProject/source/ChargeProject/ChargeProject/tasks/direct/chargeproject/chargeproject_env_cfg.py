@@ -10,6 +10,7 @@ from trimesh import Trimesh
 from isaaclab_assets.robots.anymal import ANYMAL_C_CFG  # noqa isort: skip
 from isaaclab_assets.robots.spot import SPOT_CFG  # noqa
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
+from isaaclab.sim.spawners.materials.physics_materials_cfg import RigidBodyMaterialCfg
 
 #from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg, ROBOT_CFG
 
@@ -56,10 +57,10 @@ SIMPLER_ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.12), platform_width=2.0
+            proportion=0.25, grid_width=0.45, grid_height_range=(0.05, 0.12), platform_width=2.0
         ),
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.2, noise_range=(0.01, 0.06), noise_step=0.02, border_width=0.25
+            proportion=0.15, noise_range=(0.01, 0.06), noise_step=0.02, border_width=0.25
         ),
         "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
             proportion=0.1, slope_range=(0.0, 0.3), platform_width=2.0, border_width=0.25
@@ -102,7 +103,11 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
         physx=PhysxCfg(
             #gpu_collision_stack_size = 2**27,
             gpu_max_rigid_patch_count = 2**19
-        )
+        ),
+        physics_material=RigidBodyMaterialCfg(
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
     )
     # robot(s)
     robot: ArticulationCfg = SPIDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
@@ -150,7 +155,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     )
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(
-        num_envs=int(1024*5),#0),
+        num_envs=int(1024*0.25/2),#0),
         env_spacing=4.0, 
         replicate_physics=True
     )

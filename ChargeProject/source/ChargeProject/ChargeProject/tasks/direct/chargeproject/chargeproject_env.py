@@ -14,7 +14,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from .spider_robot import SPIDER_ACTUATOR_CFG
+from .spider_robot import SPIDER_JOINT_INFO
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
@@ -79,7 +79,15 @@ class ChargeprojectEnv(DirectRLEnv):
             self.hip_body_ids.append(vals[0])
             self.feet_contact_ids.append(self._contact_sensor.find_bodies(f".*foot_{i}")[0][0])
             self.dof_idx.extend(vals)
+        
+        # Get limits and default positions from SPIDER_JOINT_INFO
+        self.dof_min_limits = torch.tensor(list(SPIDER_JOINT_INFO["limit_min"].values()), device=self.device).repeat(6)
+        self.dof_max_limits = torch.tensor(list(SPIDER_JOINT_INFO["limit_max"].values()), device=self.device).repeat(6)
+        self.dof_default_pos = torch.tensor(list(SPIDER_JOINT_INFO["default_pos"].values()), device=self.device).repeat(6)
 
+        # Pre-calculate the range of motion on either side of the default position
+        self.positive_range = self.dof_max_limits - self.dof_default_pos
+        self.negative_range = self.dof_default_pos - self.dof_min_limits
         
         self.feet_step_up_counters = self.cfg.feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
         self.feet_step_down_counters = self.cfg.feet_step_time_leeway * torch.ones(self.num_envs, len(self.feet_body_ids), device=self.device)
@@ -158,12 +166,36 @@ class ChargeprojectEnv(DirectRLEnv):
         self._distance_buffer[:, index] = target_distance.squeeze(-1)
 
     def _apply_action(self) -> None:
-        # Debugging prints
-        self.processed_actions = (
-            self.cfg.action_scale * self._actions.view(self._actions.shape[0], -1) + self._robot.data.default_joint_pos[:, self.dof_idx]
-        )
+        normalized_actions = self._actions.view(self._actions.shape[0], -1)
+        
+        # For positive actions (0 to 1), scale by the positive range
+        # For negative actions (-1 to 0), scale by the negative range
+        # torch.where is perfect for this: condition, value_if_true, value_if_false
+        action_range = torch.where(normalized_actions > 0, self.positive_range, self.negative_range)
+
+        # Calculate the final joint positions
+        self.processed_actions = self.dof_default_pos + normalized_actions * action_range
+        
+        # Optional but recommended: Explicitly clip to ensure no floating point errors exceed limits
+        self.processed_actions = torch.clamp(self.processed_actions, self.dof_min_limits, self.dof_max_limits)
+
+        
 
         """
+        hip_joint = self.dof_idx.index(self._robot.find_joints("joint_body_leg_hip_1")[0][0])
+        upper_joint = self.dof_idx.index(self._robot.find_joints("joint_leg_hip_leg_upper_1")[0][0])
+        middle_joint = self.dof_idx.index(self._robot.find_joints("joint_leg_upper_leg_middle_1")[0][0])
+        lower_joint = self.dof_idx.index(self._robot.find_joints("joint_leg_middle_leg_lower_1")[0][0])
+        
+        if self.common_step_counter <= 125:
+            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
+            # move the hip joint back
+            self.processed_actions[:, upper_joint] += 3
+        else:#elif self.common_step_counter <= 200:
+            self.processed_actions = self._robot.data.default_joint_pos[:, self.dof_idx]
+            # Slam the leg down
+            self.processed_actions[:, upper_joint] -= 3
+            
         lower_joint_ids = self._robot.find_joints("joint_leg_middle_leg_lower_.*")[0]
         # For testing standing on 3 legs
         if self.common_step_counter % 500 <= 100:
