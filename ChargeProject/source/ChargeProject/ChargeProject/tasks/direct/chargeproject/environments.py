@@ -78,7 +78,7 @@ ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerato
     },
 )
 
-VERTICAL_SCALE = 0.000005
+VERTICAL_SCALE = 0.0000025
 
 MICRO_TERRAIN_STEP = VERTICAL_SCALE
 MICRO_TERRAIN_SCALE = VERTICAL_SCALE * 15000.0
@@ -162,7 +162,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path=f"/World/envs/env_.*/Robot/{base_name}",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.5, 1.5]), # 16x16 rays   # type: ignore 
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[1.26, 1.26]), # 64x64 rays   # type: ignore
         debug_vis=False,
         mesh_prim_paths=["/World/terrain"],
     )
@@ -174,7 +174,7 @@ class MySceneCfg(InteractiveSceneCfg):
         mesh_prim_paths=["/World/terrain"],
         ray_alignment="yaw",
         pattern_cfg=patterns.LidarPatternCfg(
-            channels=12, vertical_fov_range=(-60.0, 60.0), horizontal_fov_range=(-180.0, 180.0), horizontal_res=10.0 # 35 x 12 rays   # type: ignore
+            channels=32, vertical_fov_range=(-60.0, 60.0), horizontal_fov_range=(-180.0, 180.0), horizontal_res=360.0/129.0 # 128 x 32 rays   # type: ignore
         )
     )
 

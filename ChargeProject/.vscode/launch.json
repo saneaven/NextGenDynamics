@@ -79,7 +79,7 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                        // "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.8.pt"
+                        // "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.1.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -92,7 +92,7 @@
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "10000", "--video_length", "2000", "--rendering_mode", "performance",
                       "--num_envs", "1024",
-                    //   "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.8.pt"
+                    //   "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.1.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -103,9 +103,9 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
-                      "--num_envs", "512",
-                    //   "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.8.pt"
+                      "--video", "--video_interval", "1000", "--video_length", "1000", "--rendering_mode", "quality",
+                      "--num_envs", "256",
+                      "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_debug.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

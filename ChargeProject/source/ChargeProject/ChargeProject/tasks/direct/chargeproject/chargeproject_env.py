@@ -14,6 +14,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+from ChargeProject.tasks.direct.chargeproject.cloudpoint_to_bev import build_bev, transform_world_to_ego
 from .spider_robot import SPIDER_ACTUATOR_CFG
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
@@ -21,6 +22,7 @@ from .chargeproject_env_cfg import ChargeprojectEnvCfg
 from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 import isaaclab.utils.math as math_utils
+import omni.physics.tensors as tensors
 
 import inspect
 import os
@@ -84,6 +86,13 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
+
+        # Get Gravity and Up Direction of World
+        sim_view = tensors.create_simulation_view("torch")
+        sim_view.set_subspace_roots("/")
+        g = sim_view.get_gravity()                           # carb.Float3
+        g = torch.tensor(g, device=self.device, dtype=torch.float32)
+        self._up_dir = -g / (g.norm() + 1e-8)
 
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
@@ -273,12 +282,20 @@ class ChargeprojectEnv(DirectRLEnv):
         height_data = (
             self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
         ).clip(-1.0, 1.0)
-        height_data = height_data.view(self.num_envs, 16, 16)
+        height_data = height_data.view(self.num_envs, 64, 64)
 
-        lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
-        lidar_data = lidar_data.view(self.num_envs, 35, 12, 3)
+        world_points = self._lidar_sensor.data.ray_hits_w  # (batch_size, num_points, 3)
+        sensor_position_world = self._lidar_sensor.data.pos_w  # (batch_size, 3)
+        sensor_quaternion_world_wxyz = self._lidar_sensor.data.quat_w  # (batch_size, 4) [w,x,y,z]
 
+        ego_points = transform_world_to_ego(world_points, sensor_position_world, sensor_quaternion_world_wxyz)
 
+        bev_data = build_bev(
+            ego_points,
+            channels=("max_height", "mean_height", "density"),
+        )
+        # lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
+        # lidar_data = lidar_data.view(self.num_envs, 128, 32, 3)
         
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
@@ -305,7 +322,7 @@ class ChargeprojectEnv(DirectRLEnv):
         return {
             "observations": obs,
             "height_data": height_data,
-            "lidar_data": lidar_data
+            "bev_data": bev_data
         }
     
     def _get_observations(self) -> dict:
@@ -374,14 +391,17 @@ class ChargeprojectEnv(DirectRLEnv):
         #                   * torch.square(torch.abs(self._robot.data.root_lin_vel_b[:, 0]))
         # forward_vel_reward = self._robot.data.root_lin_vel_b[:, 0]
 
-        # Penalty for staying still (low horizontal velocity/rotating in the robot's frame)
-        horizontal_speed = torch.linalg.norm(
-            self._robot.data.root_lin_vel_w[:, :2], dim=1
-        )
-        # yaw_speed = torch.abs(self._robot.data.root_ang_vel_b[:, 2])
-        # # Combine linear and angular speed. The 0.25 factor balances their contributions.
-        # motion_metric = horizontal_speed + 0.25 * yaw_speed
-        # still_penalty = torch.exp(-2.0 * motion_metric)
+        
+        # Get horizontal speed
+
+        v_w = self._robot.data.body_link_lin_vel_w[:, self.body_ids]
+        dot = (v_w * self._up_dir).sum(dim=-1, keepdim=True)
+        v_horizontal = v_w - dot * self._up_dir
+        horizontal_speed = v_horizontal.norm(dim=-1).squeeze(1)
+    
+        # # Combine linear and angular speed.
+        motion_metric = - horizontal_speed * self.cfg.motion_metric_pow
+        still_penalty = torch.exp(motion_metric)
 
         # linear velocity tracking
         # lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -396,10 +416,10 @@ class ChargeprojectEnv(DirectRLEnv):
         #     torch.square(self._robot.data.root_ang_vel_b[:, :2]), dim=1
         # )
         # joint torques
-        joint_torques = torch.sum(torch.square(self._robot.data.applied_torque), dim=1)
+        joint_num = len(self._robot.data.joint_acc[0])
+        joint_torques = torch.sum(torch.square(self._robot.data.applied_torque / joint_num), dim=1)
 
         # joint acceleration
-        joint_num = len(self._robot.data.joint_acc[0])
         joint_accel = torch.sum(torch.square(self._robot.data.joint_acc / joint_num), dim=1)
 
         # action rate
@@ -415,6 +435,7 @@ class ChargeprojectEnv(DirectRLEnv):
         last_air_time = self._contact_sensor.data.last_air_time[:, self.contact_sensor_feet_ids]
         
         air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
+
         
         # body vertical acceleration
         acc_lin_w = self._robot.data.body_com_lin_acc_w
@@ -428,6 +449,10 @@ class ChargeprojectEnv(DirectRLEnv):
         normalized_air_feet = air_feet_per_agent / len(self.contact_sensor_feet_ids)
         normalized_air_feet[normalized_air_feet < 0.0000001] = 1.0  # If no feet on air, max penalty.
         jump_penalty = normalized_air_feet * normalized_air_feet * normalized_air_feet
+
+        # force of feet in contact with ground
+        feet_contact_forces = self._contact_sensor.data.net_forces_w[:, self.contact_sensor_feet_ids]
+        feet_contact_forces_mean = torch.mean(torch.norm(feet_contact_forces, dim=-1), dim=1) ** 2.0
 
         # undesired contacts
         undesired_contacts = torch.sum(self.is_contact[:, self.undesired_contact_body_ids], dim=1)
@@ -472,7 +497,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "jump_penalty": jump_penalty * self.cfg.jump_penalty_scale * self.step_dt,
             # "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "body_angular_velocity_penalty": body_angular_velocity * self.cfg.body_angular_velocity_penalty_scale * self.step_dt,
-            # "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
+            "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
             "speed_reward": horizontal_speed * self.cfg.speed_reward_scale * self.step_dt,
             # "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             # "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
@@ -483,6 +508,7 @@ class ChargeprojectEnv(DirectRLEnv):
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
             # "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
+            "feet_contact_force": feet_contact_forces_mean * self.cfg.feet_contact_penalty_scale * self.step_dt,
             #"desired_contacts": stable_contact * self.cfg.stable_contact_reward_scale * self.step_dt,
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             #"feet_height_penalty": feet_height_penalty * self.cfg.feet_height_penalty_scale * self.step_dt,
