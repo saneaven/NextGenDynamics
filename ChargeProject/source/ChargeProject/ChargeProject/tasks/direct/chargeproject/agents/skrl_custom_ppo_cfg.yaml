@@ -8,7 +8,8 @@ seed: 42
 
 # Model defined in skrl_custom_ppo_model.py
 model:
-  log_std: 0.0
+  log_std_init: -1.0
+  #gain: 0.7
 
 
 # Rollout memory automicaly set in train
@@ -22,9 +23,9 @@ model:
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html
 agent:
   #class: PPO
-  rollouts: 32
+  rollouts: 64
   learning_epochs: 3
-  mini_batches: 8
+  mini_batches: 32
   discount_factor: 0.99
   lambda: 0.95
   learning_rate: 1.0e-04
