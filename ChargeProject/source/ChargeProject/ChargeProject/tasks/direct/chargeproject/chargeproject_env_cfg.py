@@ -5,7 +5,10 @@
 
 import math
 
-from ChargeProject.tasks.direct.chargeproject.environments import MySceneCfg
+import numpy as np
+
+from ChargeProject.tasks.direct.chargeproject.environment.environments import MySceneCfg
+from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.custom_terrain_generator import terrain_generator
 from isaaclab.envs import DirectRLEnvCfg
 from isaaclab.sim import SimulationCfg, PhysxCfg
 from isaaclab.utils import configclass
@@ -30,9 +33,9 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     observation_space = 722 # with height scanner and lidar
     
     observation_space = spaces.Dict({
-        "observations": spaces.Box(-math.inf, math.inf, shape=(118,), dtype=float),
-        "height_data": spaces.Box(-math.inf, math.inf, shape=(64, 64), dtype=float),
-        "bev_data": spaces.Box(-math.inf, math.inf, shape=(3, 64, 64), dtype=float)
+        "observations": spaces.Box(-math.inf, math.inf, shape=(120,), dtype=np.float32),
+        "height_data": spaces.Box(-math.inf, math.inf, shape=(64, 64), dtype=np.float32),
+        "bev_data": spaces.Box(-math.inf, math.inf, shape=(3, 64, 64), dtype=np.float32)
     })
     state_space = 0 #idk why this is here
     # simulation
@@ -71,11 +74,17 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
 
     
     # scene
-    scene: MySceneCfg = MySceneCfg(
-        num_envs= int(1024.0 * 0.5),  # 1024
+    scene: MySceneCfg = MySceneCfg( # type: ignore
+        num_envs= int(1024.0 * 0.5),
         env_spacing=4.0,
         replicate_physics=True
     )
+
+    height_map_size_x = terrain_generator.config.size[0]
+    height_map_size_y = terrain_generator.config.size[1]
+    height_map_meter_per_grid = terrain_generator.config.meter_per_grid
+
+    spawn_padding = 20.0  # meters from edge of height map to spawn robots within
     
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
@@ -90,35 +99,38 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     marker_colors = 57
 
     # Final rewards
-    action_scale = 0.7
+    action_scale = 0.75
     
-    progress_reward_scale = 50.0 * 1.0e4 # 500 # linear version ish
+    progress_reward_scale = 3.0e3 # 500 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 15.0 # 10.0 #2 #6
+    velocity_alignment_reward_scale = 2.5 * 1.0e2 # 10.0 #2 #6
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 750.0
+    reach_target_reward_scale = 250.0
     # forward_vel_reward_scale = 0.0 #1.2#/30
     life_time_reward_scale = 0.005
     # time_penalty_scale = 0.0 #-5
-    death_penalty_scale = -10000.0 # -1000.0 # -500.0
-    still_penalty_scale = -100000.0
-    motion_metric_pow = 128.0 # for still penalty
-    speed_reward_scale = 5.0 * 100.0
+    death_penalty_scale = -5.0e5 # -1000.0 # -500.0
+    # still_penalty_scale = -2.0e-6
+    # still_threshold = 2.0
+    # motion_metric_pow = 10.0 # for still penalty
+    speed_reward_scale = 3.0e1
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     # z_vel_penalty_scale = -0.001
-    jump_penalty_scale = -15.0 * 10.0
-    feet_contact_penalty_scale = -0.0001
+    jump_penalty_scale = -2.5e2
+    feet_contact_penalty_scale = -1.0e-7
     # ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -7.5
-    joint_accel_reward_scale = -1.0e-04 # idk this works # -1.5e-07
+    joint_torque_reward_scale = -0.75
+    joint_accel_reward_scale = -7.5e-04 # idk this works # -1.5e-07
     # dof_vel_reward_scale = 0
-    action_rate_reward_scale = -0.02
-    body_angular_velocity_penalty_scale = -0.05
-    body_vertical_acceleration_penalty_scale = -0.01
-    # feet_air_time_reward_scale = 1.0
-    undesired_contact_reward_scale = -10.0 * 5.0 ## -0.75
-    flat_orientation_reward_scale = -1.5 * 2.0
+    action_rate_reward_scale = -2.0
+    body_angular_velocity_penalty_scale = -5.0
+    body_vertical_acceleration_penalty_scale = -3.0
+    feet_air_time_reward_scale = 2.5
+    feet_ground_time_penalty_scale = -5.0e1
+    contact_threshold = 1.0e-2
+    undesired_contact_reward_scale = -2.5e2 ## -0.75
+    flat_orientation_reward_scale = -2.0e3

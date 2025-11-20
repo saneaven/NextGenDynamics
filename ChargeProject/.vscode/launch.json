@@ -79,7 +79,7 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                        // "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_v0.1.pt"
+                        // "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_debug_v7.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -103,9 +103,9 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "1000", "--video_length", "1000", "--rendering_mode", "quality",
+                      "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
                       "--num_envs", "256",
-                      "--checkpoint", "checkpoints/Spider/SpiderBot_mj_base_debug.pt"
+                    //   "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_debug_v7.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

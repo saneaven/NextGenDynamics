@@ -228,7 +228,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     cfg = agent_cfg["agent"].copy()
     # override learning_rate_scheduler with the class
-    #cfg["learning_rate_scheduler"] = KLAdaptiveLR
+    # cfg["learning_rate_scheduler"] = KLAdaptiveLR
     shaper_scale = cfg.get("rewards_shaper_scale", 1.0)
     cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * shaper_scale
     cfg["state_preprocessor"] = RunningStandardScaler

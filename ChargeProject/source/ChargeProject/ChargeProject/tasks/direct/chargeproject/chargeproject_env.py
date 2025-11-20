@@ -14,8 +14,9 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from ChargeProject.tasks.direct.chargeproject.cloudpoint_to_bev import build_bev, transform_world_to_ego
-from .spider_robot import SPIDER_ACTUATOR_CFG
+from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import build_bev, transform_world_to_ego
+from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.custom_terrain_generator import terrain_generator
+from .environment.spider_robot import SPIDER_ACTUATOR_CFG
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
 
@@ -39,8 +40,8 @@ class ChargeprojectEnv(DirectRLEnv):
         self.dof_idx, _ = self._robot.find_joints(SPIDER_ACTUATOR_CFG.joint_names_expr)
         
         # Target positions
-        self._desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
-        self._next_desired_pos = torch.zeros(self.num_envs, 2, device=self.device)
+        self._desired_pos = torch.zeros(self.num_envs, 3, device=self.device)
+        self._next_desired_pos = torch.zeros(self.num_envs, 3, device=self.device)
         self._time_since_target = torch.zeros(self.num_envs, device=self.device)
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
@@ -86,6 +87,9 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
+
+        # Add height map data
+        self._terrain_height_map = torch.from_numpy(terrain_generator.height_map).to(dtype=torch.float32, device=self.device)
 
         # Get Gravity and Up Direction of World
         sim_view = tensors.create_simulation_view("torch")
@@ -147,7 +151,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
         self._actions = actions.clone()
-        target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w[:, :2], dim=1)
+        target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w, dim=1)
 
  
         self._visualize_markers(target_distance)
@@ -179,21 +183,16 @@ class ChargeprojectEnv(DirectRLEnv):
     def _get_relative_target_info(
         self, target_pos_w: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        relative_target_pos_w = target_pos_w - self._robot.data.root_pos_w[:, :2]
+        relative_target_pos_w = target_pos_w - self._robot.data.root_pos_w
         distance = torch.linalg.norm(relative_target_pos_w, dim=1, keepdim=True)
 
-        # Pad the 2D world vector to 3D for rotation (z=0)
-        relative_target_pos_w_3d = torch.cat(
-            (relative_target_pos_w, torch.zeros_like(distance)), dim=1
-        )
-
         # Rotate the world vector into the robot's local body frame
-        relative_target_pos_b_3d = math_utils.quat_apply_inverse(
-            self._robot.data.root_quat_w, relative_target_pos_w_3d
+        relative_target_pos_b = math_utils.quat_apply_inverse(
+            self._robot.data.root_quat_w, relative_target_pos_w
         )
 
         # Normalize the resulting 2D body-frame vector to get the unit vector
-        unit_vector_b = relative_target_pos_b_3d[:, :2] / (distance + 1e-6)
+        unit_vector_b = relative_target_pos_b / (distance + 1e-6)
 
         return unit_vector_b, distance
     
@@ -274,7 +273,7 @@ class ChargeprojectEnv(DirectRLEnv):
                 ),
                 dim=1,
             )[0]
-            > 1.0
+            > self.cfg.contact_threshold
         )
 
         self._target_distance = target_distance.squeeze(-1)
@@ -353,8 +352,10 @@ class ChargeprojectEnv(DirectRLEnv):
         
         # Velocity alignment the target
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
-           self._robot.data.root_lin_vel_w[:, :2], target_unit_vector, dim=1
+           self._robot.data.root_lin_vel_w[:, :2], target_unit_vector[:, :2], dim=1
         )
+        velocity_alignment_reward = torch.pow(velocity_alignment_reward, 3.0)  # emphasize forward movement
+
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
         # hit_target = self._targets_reached > 0
@@ -400,8 +401,8 @@ class ChargeprojectEnv(DirectRLEnv):
         horizontal_speed = v_horizontal.norm(dim=-1).squeeze(1)
     
         # # Combine linear and angular speed.
-        motion_metric = - horizontal_speed * self.cfg.motion_metric_pow
-        still_penalty = torch.exp(motion_metric)
+        # motion_metric = - (horizontal_speed - self.cfg.still_threshold) * self.cfg.motion_metric_pow
+        # still_penalty = torch.exp(motion_metric)
 
         # linear velocity tracking
         # lin_vel_error = torch.sum(torch.square(self._commands[:, :2] - self._robot.data.root_lin_vel_b[:, :2]), dim=1)
@@ -436,6 +437,11 @@ class ChargeprojectEnv(DirectRLEnv):
         
         air_time = torch.sum((last_air_time - 0.5) * first_contact, dim=1)
 
+        contact_time = self._contact_sensor.data.current_contact_time[:, self.contact_sensor_feet_ids]
+        in_contact = (contact_time > 0.0).to(contact_time.dtype) 
+
+        feet_ground_max_time = torch.max(contact_time * in_contact, dim=1).values
+
         
         # body vertical acceleration
         acc_lin_w = self._robot.data.body_com_lin_acc_w
@@ -446,9 +452,10 @@ class ChargeprojectEnv(DirectRLEnv):
         current_air_times = self._contact_sensor.data.current_air_time[:, self.contact_sensor_feet_ids]
         air_feet_per_agent = (current_air_times > 0).float().sum(dim=1)
         # jump_penalty = (current_air_times > 0).all(dim=1).float()
-        normalized_air_feet = air_feet_per_agent / len(self.contact_sensor_feet_ids)
-        normalized_air_feet[normalized_air_feet < 0.0000001] = 1.0  # If no feet on air, max penalty.
-        jump_penalty = normalized_air_feet * normalized_air_feet * normalized_air_feet
+        total_foot_num = float(len(self.contact_sensor_feet_ids))
+        normalized_air_feet = air_feet_per_agent / total_foot_num # normalize to [0, 1]
+        normalized_air_feet[normalized_air_feet < 0.0000001] = 2.0 / total_foot_num  # If no feet on air, equal to two foot on air
+        jump_penalty = normalized_air_feet * normalized_air_feet * normalized_air_feet  # cubic penalty
 
         # force of feet in contact with ground
         feet_contact_forces = self._contact_sensor.data.net_forces_w[:, self.contact_sensor_feet_ids]
@@ -493,11 +500,12 @@ class ChargeprojectEnv(DirectRLEnv):
             # "time_penalty": time_penalty * self.cfg.time_penalty_scale * self.step_dt,
             "velocity_alignment_reward": velocity_alignment_reward * self.cfg.velocity_alignment_reward_scale * self.step_dt,
             "reach_target_reward": target_reward * self.cfg.reach_target_reward_scale * self.step_dt,
+            "feet_ground_time": feet_ground_max_time * self.cfg.feet_ground_time_penalty_scale * self.step_dt,
             "death_penalty": death_penalty * self.cfg.death_penalty_scale * self.step_dt,
             "jump_penalty": jump_penalty * self.cfg.jump_penalty_scale * self.step_dt,
             # "forward_vel": forward_vel_reward * self.cfg.forward_vel_reward_scale * self.step_dt,
             "body_angular_velocity_penalty": body_angular_velocity * self.cfg.body_angular_velocity_penalty_scale * self.step_dt,
-            "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
+            # "still_penalty": still_penalty * self.cfg.still_penalty_scale * self.step_dt,
             "speed_reward": horizontal_speed * self.cfg.speed_reward_scale * self.step_dt,
             # "lin_vel_z_l2": z_vel_error * self.cfg.z_vel_penalty_scale * self.step_dt,
             # "ang_vel_xy_l2": ang_vel_error * self.cfg.ang_vel_reward_scale * self.step_dt,
@@ -506,7 +514,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "dof_acc_l2": joint_accel * self.cfg.joint_accel_reward_scale * self.step_dt,
             "action_rate_l2": action_rate * self.cfg.action_rate_reward_scale * self.step_dt,
             # "dof_vel_l2": dof_vel * self.cfg.dof_vel_reward_scale * self.step_dt,
-            # "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
+            "feet_air_time": air_time * self.cfg.feet_air_time_reward_scale * self.step_dt,
             "undesired_contacts": undesired_contacts * self.cfg.undesired_contact_reward_scale * self.step_dt,
             "feet_contact_force": feet_contact_forces_mean * self.cfg.feet_contact_penalty_scale * self.step_dt,
             #"desired_contacts": stable_contact * self.cfg.stable_contact_reward_scale * self.step_dt,
@@ -519,7 +527,7 @@ class ChargeprojectEnv(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
 
         # Check if distance is within tolerance
-        target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w[:, :2], dim=1)
+        target_distance = torch.linalg.norm(self._desired_pos - self._robot.data.root_pos_w, dim=1)
         reached_target = target_distance.squeeze(-1) < self.cfg.success_tolerance
         reached_target_ids = reached_target.nonzero(as_tuple=False).squeeze(-1)
 
@@ -621,8 +629,18 @@ class ChargeprojectEnv(DirectRLEnv):
             return
         
         # Setup respawn position using flat patches
-        patches = self.scene.terrain.flat_patches["robot_spawn"]   # shape: (rows, cols, num_patches, 3)
-        patches = patches.reshape(-1, 3)   # patches.reshape(-1, 3)
+        # patches = self.scene.terrain.flat_patches["robot_spawn"]   # shape: (rows, cols, num_patches, 3)
+        # patches = patches.reshape(-1, 3)   # patches.reshape(-1, 3)
+
+        # Random XY within spawn area
+        random_x_range = self.cfg.height_map_size_x - self.cfg.spawn_padding * 2
+        random_y_range = self.cfg.height_map_size_y - self.cfg.spawn_padding * 2
+
+        random_x = torch.rand(len(env_ids), device=self.device) * random_x_range - random_x_range / 2.0
+        random_y = torch.rand(len(env_ids), device=self.device) * random_y_range - random_y_range / 2.0
+        random_xy = torch.stack([random_x, random_y], dim=-1)
+        pos_z =  self._get_terrain_height(random_xy).unsqueeze(-1)  # shape: (num_envs, 1)
+        patches = torch.cat([random_xy, pos_z], dim=-1)
 
         n = len(env_ids)
         idx = torch.randperm(patches.shape[0])[:n]
@@ -639,7 +657,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._robot.write_root_pose_to_sim(root_pose_w, env_ids)
 
         # Set Next target positions to be reset position
-        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids, :2].clone()
+        self._next_desired_pos[env_ids] = self._robot.data.root_pos_w[env_ids].clone()
         self._move_next_targets(env_ids)
         self._move_next_targets(
             env_ids
@@ -677,18 +695,21 @@ class ChargeprojectEnv(DirectRLEnv):
             self.cfg.point_min_distance - self.cfg.point_max_distance
         ) * torch.rand(num_resets, device=self.device)
         angle = 2 * math.pi * torch.rand(num_resets, device=self.device)
-        new_target_pos_xy = self._desired_pos[env_ids] + torch.stack(
+        new_target_pos_xy = self._desired_pos[env_ids, :2] + torch.stack(
             [radius * torch.cos(angle), radius * torch.sin(angle)], dim=1
         )
 
+        new_target_pos_z = self._get_terrain_height(new_target_pos_xy).unsqueeze(-1) + 0.25
+        new_target_pos = torch.cat([new_target_pos_xy, new_target_pos_z], dim=-1)
+
         # Update current and next desired positions
-        self._next_desired_pos[env_ids] = new_target_pos_xy
+        self._next_desired_pos[env_ids] = new_target_pos
 
         # set _distance_buffer to nan and add current distance as element
         self._distance_buffer[env_ids] = torch.nan
         index = self._sim_step_counter % self.cfg.distance_lookback
         distance = torch.linalg.norm(
-            self._robot.data.root_pos_w[env_ids, :2] - self._desired_pos[env_ids], dim=1
+            self._robot.data.root_pos_w[env_ids] - self._desired_pos[env_ids], dim=1
         )
         self._distance_buffer[env_ids, index] = distance
 
@@ -743,20 +764,12 @@ class ChargeprojectEnv(DirectRLEnv):
         return VisualizationMarkers(marker_cfg)
 
     def _visualize_markers_impl(self, target_distance):
-        desired_pos_3d = torch.cat(
-            [
-                self._desired_pos,
-                0.2 * torch.ones((self.num_envs, 1), device=self.device),
-            ],
-            dim=-1,
-        )
         marker_indices = (
             torch.arange(self.num_envs, device=self.device) % self.cfg.marker_colors
         )
 
         # --- Identifier Arrow Marker ---
-        robot_pos_2d = self._robot.data.root_pos_w[:, :2]
-        relative_target_pos = self._desired_pos - robot_pos_2d
+        relative_target_pos = self._desired_pos - self._robot.data.root_pos_w
         yaw = torch.atan2(relative_target_pos[:, 1], relative_target_pos[:, 0])
         orientations = math_utils.quat_from_angle_axis(yaw, self._up_dir)
 
@@ -779,7 +792,7 @@ class ChargeprojectEnv(DirectRLEnv):
             [0.0, 0.0, 0.5], device=self.device
         )
 
-        return desired_pos_3d, marker_indices, arrow_positions, orientations, scales
+        return self._desired_pos, marker_indices, arrow_positions, orientations, scales
 
     def _visualize_markers(self, target_distance):
         (
@@ -798,3 +811,53 @@ class ChargeprojectEnv(DirectRLEnv):
             scales=scales,
             marker_indices=marker_indices,
         )
+
+    def _get_terrain_height(self, positions_xy: torch.Tensor) -> torch.Tensor:
+        if self.scene.terrain is None:
+            raise RuntimeError("Terrain not found, cannot get height information.")
+        
+        meter_per_grid: float = self.cfg.height_map_meter_per_grid
+
+        # use bilinear interpolation to get height at given (x, y) positions from terrain_height_map
+        terrain_height_map = self._terrain_height_map
+
+        # Convert world coordinates (centered around 0,0) to grid coordinates (0..N)
+        grid_pos = positions_xy / meter_per_grid
+        num_rows, num_cols = terrain_height_map.shape
+        grid_pos[:, 0] += num_rows / 2
+        grid_pos[:, 1] += num_cols / 2
+        
+        # Get integer coordinates
+        x0 = torch.floor(grid_pos[:, 0]).long()
+        y0 = torch.floor(grid_pos[:, 1]).long()
+        x1 = x0 + 1
+        y1 = y0 + 1
+
+        # Clamp coordinates to map bounds
+        x0 = torch.clamp(x0, 0, num_rows - 1)
+        x1 = torch.clamp(x1, 0, num_rows - 1)
+        y0 = torch.clamp(y0, 0, num_cols - 1)
+        y1 = torch.clamp(y1, 0, num_cols - 1)
+
+        # Get heights at grid points
+        h00 = terrain_height_map[x0, y0]
+        h10 = terrain_height_map[x1, y0]
+        h01 = terrain_height_map[x0, y1]
+        h11 = terrain_height_map[x1, y1]
+
+        # Calculate weights
+        wx = grid_pos[:, 0] - x0.float()
+        wy = grid_pos[:, 1] - y0.float()
+
+        # Bilinear interpolation
+        # Interpolate along x
+        hx0 = h00 * (1 - wx) + h10 * wx
+        hx1 = h01 * (1 - wx) + h11 * wx
+        
+        # Interpolate along y
+        height = hx0 * (1 - wy) + hx1 * wy
+
+        return height
+
+
+

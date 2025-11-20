@@ -7,7 +7,8 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 from .spider_robot import SPIDER_CFG
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 from isaaclab.assets import AssetBaseCfg
-from ChargeProject.tasks.direct.chargeproject.double_noise_env import HfTwoScaleNoiseCfg
+from .terrain_gen.custom_terrain_generator import terrain_generator
+
 
 from isaaclab.assets import AssetBaseCfg
 import isaaclab.sim as sim_utils
@@ -15,8 +16,10 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 
 
+
 base_name = "body"
 
+"""
 ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(4.0, 4.0),
     border_width=2.0,
@@ -77,15 +80,16 @@ ROUGH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerato
         )
     },
 )
+"""
 
-VERTICAL_SCALE = 0.0000025
+VERTICAL_SCALE = 0.000005
 
 MICRO_TERRAIN_STEP = VERTICAL_SCALE
 MICRO_TERRAIN_SCALE = VERTICAL_SCALE * 15000.0
 
 MACRO_TERRAIN_STEP = VERTICAL_SCALE * 10000.0
 MACRO_TERRAIN_SCALE = VERTICAL_SCALE * 32767.0
-
+"""
 SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGeneratorCfg(
     size=(128.8, 128.0),
     # border_width=10.0,
@@ -96,11 +100,8 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
     horizontal_scale=0.1,
     slope_threshold=None,
     sub_terrains={
-        "random_uniform": HfTwoScaleNoiseCfg(
+        "random_uniform": HfComplexTerrainCfg(
             proportion=1.0,
-            macro_noise_step=MACRO_TERRAIN_STEP,
-            macro_noise_range=(-MACRO_TERRAIN_SCALE, MACRO_TERRAIN_SCALE),
-            macro_downsampled_scale=None,
             micro_noise_step= MICRO_TERRAIN_STEP,
             micro_noise_range=(-MICRO_TERRAIN_SCALE, MICRO_TERRAIN_SCALE),
             micro_downsampled_scale=0.1,
@@ -122,7 +123,10 @@ SMOOTH_TERRAIN_CFG: terrain_gen.TerrainGeneratorCfg = terrain_gen.TerrainGenerat
         # ),
     },
 )
+"""
 
+terrain_generator.initialize()
+TERRAIN_USD_PATH = terrain_generator.get_terrain_path()
 
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
@@ -130,23 +134,23 @@ class MySceneCfg(InteractiveSceneCfg):
     env_spacing = 4.0
     replicate_physics = True
 
+
+
     terrain: terrain_gen.TerrainImporterCfg = terrain_gen.TerrainImporterCfg(
         prim_path="/World/terrain",
-        terrain_type="generator",
-        terrain_generator=SMOOTH_TERRAIN_CFG,
-        # max_init_terrain_level=1,
-        # collision_group=-1,
-        # physics_material=sim_utils.RigidBodyMaterialCfg(
-        #     friction_combine_mode="multiply",
-        #     restitution_combine_mode="multiply",
-        #     static_friction=1.0,
-        #     dynamic_friction=1.0,
-        #     restitution=0.0,
-        # ),
+        terrain_type="usd",
+        usd_path=TERRAIN_USD_PATH,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            restitution=0.0,
+        ),
     )
 
+
+
     # robot(s)
-    robot: ArticulationCfg = SPIDER_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot: ArticulationCfg = SPIDER_CFG.replace(prim_path="/World/envs/env_.*/Robot") #type: ignore
     #robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="/World/envs/env_.*/Robot")
     #robot: ArticulationCfg = ANYMAL_C_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
@@ -162,7 +166,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path=f"/World/envs/env_.*/Robot/{base_name}",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.02, size=[1.26, 1.26]), # 64x64 rays   # type: ignore
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.04, size=[2.52, 2.52]), # 64x64 rays   # type: ignore
         debug_vis=False,
         mesh_prim_paths=["/World/terrain"],
     )
