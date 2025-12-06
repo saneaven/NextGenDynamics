@@ -491,6 +491,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Wall Proximity Penalty
         lidar_hits_w = self._lidar_sensor.data.ray_hits_w  # (batch_size, num_points, 3)
+        lidar_hits_w = torch.nan_to_num(lidar_hits_w, nan=0.0, posinf=1000.0, neginf=-1000.0)
         rel_hits_w = lidar_hits_w - self._lidar_sensor.data.pos_w.unsqueeze(1)  # (batch_size, num_points, 3)
 
         # Flatten for robust broadcasting in TorchScript
