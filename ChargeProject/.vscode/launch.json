@@ -41,6 +41,15 @@
             "console": "integratedTerminal"
         },
         {
+            // python -m tensorboard.main --logdir=logs
+            "name": "Python: Launch Custom Terrain Generator",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/source/ChargeProject/ChargeProject/tasks/direct/chargeproject/environment/",
+            "module": "terrain_gen.custom_terrain_generator",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "Python: Train Environment",
             "type": "python",
             "request": "launch",
@@ -79,7 +88,7 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                        // "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_debug_v7.pt"
+                        "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -103,9 +112,9 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                      "--video", "--video_interval", "500", "--video_length", "500", "--rendering_mode", "quality",
+                      "--video", "--video_interval", "2000", "--video_length", "2000", "--rendering_mode", "quality",
                       "--num_envs", "256",
-                    //   "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_debug_v7.pt"
+                       "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

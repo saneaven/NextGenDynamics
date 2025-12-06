@@ -34,10 +34,10 @@ SPIDER_JOINT_INFO = {
     },
 }
 
-EFFORT_SCALE = 0.5
-STIFFNESS_SCALE = 0.8
-DAMPING_SCALE     = 0.5
-VEL_LIMIT    = 3.0
+EFFORT_SCALE = 1.0
+STIFFNESS_SCALE = 1.0
+DAMPING_SCALE  = 1.0
+VEL_LIMIT    = 6.0
 
 
 SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
@@ -49,31 +49,31 @@ SPIDER_ACTUATOR_CFG = ImplicitActuatorCfg(
     ],
 
     effort_limit_sim={
-        "joint_body_leg_hip_.*":          20.0 * EFFORT_SCALE,
+        "joint_body_leg_hip_.*":          40.0 * EFFORT_SCALE,
         "joint_leg_hip_leg_upper_.*":     40.0 * EFFORT_SCALE,
-        "joint_leg_upper_leg_middle_.*":  40.0 * EFFORT_SCALE,
-        "joint_leg_middle_leg_lower_.*":  25.0 * EFFORT_SCALE,
+        "joint_leg_upper_leg_middle_.*":  80.0 * EFFORT_SCALE,
+        "joint_leg_middle_leg_lower_.*":  60.0 * EFFORT_SCALE,
     },
 
     stiffness={
-        "joint_body_leg_hip_.*":          40.0 * STIFFNESS_SCALE,
-        "joint_leg_hip_leg_upper_.*":     80.0 * STIFFNESS_SCALE,
-        "joint_leg_upper_leg_middle_.*":  80.0 * STIFFNESS_SCALE,
-        "joint_leg_middle_leg_lower_.*":  50.0 * STIFFNESS_SCALE,
+        "joint_body_leg_hip_.*":          80.0 * STIFFNESS_SCALE,
+        "joint_leg_hip_leg_upper_.*":     70.0 * STIFFNESS_SCALE,
+        "joint_leg_upper_leg_middle_.*":  45.0 * STIFFNESS_SCALE,
+        "joint_leg_middle_leg_lower_.*":  20.0 * STIFFNESS_SCALE,
     },
 
     velocity_limit_sim={
         "joint_body_leg_hip_.*":          VEL_LIMIT,
         "joint_leg_hip_leg_upper_.*":     VEL_LIMIT,
-        "joint_leg_upper_leg_middle_.*":  VEL_LIMIT,
-        "joint_leg_middle_leg_lower_.*":  VEL_LIMIT,
+        "joint_leg_upper_leg_middle_.*":  0.75 * VEL_LIMIT,
+        "joint_leg_middle_leg_lower_.*":  0.5 * VEL_LIMIT,
     },
 
     damping={
-        "joint_body_leg_hip_.*":          0.4 * DAMPING_SCALE,
-        "joint_leg_hip_leg_upper_.*":     0.8 * DAMPING_SCALE,
-        "joint_leg_upper_leg_middle_.*":  0.8 * DAMPING_SCALE,
-        "joint_leg_middle_leg_lower_.*":  0.5 * DAMPING_SCALE,
+        "joint_body_leg_hip_.*":          1.5 * DAMPING_SCALE,
+        "joint_leg_hip_leg_upper_.*":     1.5 * DAMPING_SCALE,
+        "joint_leg_upper_leg_middle_.*":  1.0 * DAMPING_SCALE,
+        "joint_leg_middle_leg_lower_.*":  1.0 * DAMPING_SCALE,
     },
 
     friction=0.05,

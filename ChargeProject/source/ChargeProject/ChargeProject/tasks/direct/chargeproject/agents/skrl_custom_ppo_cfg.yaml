@@ -30,10 +30,10 @@ agent:
   lambda: 0.95
   learning_rate: 1.0e-03
   # Can be changed in config
-  # learning_rate_scheduler: KLAdaptiveLR
-  # learning_rate_scheduler_kwargs:
-  #   kl_threshold: 0.05
-  #   min_lr: 3.0e-5
+  learning_rate_scheduler: KLAdaptiveLR
+  learning_rate_scheduler_kwargs:
+    kl_threshold: 0.05
+    min_lr: 3.0e-5
   state_preprocessor: null
   state_preprocessor_kwargs: null
   value_preprocessor: RunningStandardScaler

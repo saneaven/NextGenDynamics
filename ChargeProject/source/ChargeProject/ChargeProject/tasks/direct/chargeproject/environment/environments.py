@@ -141,8 +141,8 @@ class MySceneCfg(InteractiveSceneCfg):
         terrain_type="usd",
         usd_path=TERRAIN_USD_PATH,
         physics_material=sim_utils.RigidBodyMaterialCfg(
-            static_friction=1.0,
-            dynamic_friction=1.0,
+            static_friction=0.5,
+            dynamic_friction=0.5,
             restitution=0.0,
         ),
     )

@@ -227,8 +227,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     models["value"] = models["policy"]
 
     cfg = agent_cfg["agent"].copy()
-    # override learning_rate_scheduler with the class
-    # cfg["learning_rate_scheduler"] = KLAdaptiveLR
+
+    scheduler_cfg = cfg.get("learning_rate_scheduler")
+    if isinstance(scheduler_cfg, str):
+        scheduler_map = {
+            "KLAdaptiveLR": KLAdaptiveLR,
+        }
+        try:
+            cfg["learning_rate_scheduler"] = scheduler_map[scheduler_cfg]
+        except KeyError as exc:
+            raise ValueError(f"Unknown learning_rate_scheduler '{scheduler_cfg}'. ") from exc
+        
     shaper_scale = cfg.get("rewards_shaper_scale", 1.0)
     cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * shaper_scale
     cfg["state_preprocessor"] = RunningStandardScaler

@@ -16,6 +16,7 @@ from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import build_bev, transform_world_to_ego
 from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.custom_terrain_generator import terrain_generator
+from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.mesh_loader import get_obstacle_radius
 from .environment.spider_robot import SPIDER_ACTUATOR_CFG
 
 from .chargeproject_env_cfg import ChargeprojectEnvCfg
@@ -46,6 +47,7 @@ class ChargeprojectEnv(DirectRLEnv):
         self._targets_reached = torch.zeros(self.num_envs, device=self.device)
         self._time_outs = torch.zeros(self.num_envs, device=self.device)
         self._life_time = torch.zeros(self.num_envs, device=self.device)
+        
 
         self._actions = torch.zeros(
             (self.num_envs, gym.spaces.flatdim(self.single_action_space)),
@@ -90,6 +92,22 @@ class ChargeprojectEnv(DirectRLEnv):
 
         # Add height map data
         self._terrain_height_map = torch.from_numpy(terrain_generator.height_map).to(dtype=torch.float32, device=self.device)
+        self._spawn_points = torch.from_numpy(terrain_generator.spawn_points).to(dtype=torch.float32, device=self.device)
+
+        # Load obstacle circles for collision checking (x, y, radius)
+        if terrain_generator.obstacle_placement is not None:
+            obstacle_circles = []
+            for obs_type, data in terrain_generator.obstacle_placement.items():
+                positions = data.get("positions")  # (N, 3)
+                scales = data.get("scales")        # (N, 3)
+                if positions is None or scales is None:
+                    continue
+                radii = get_obstacle_radius(obs_type, scales)
+                for i in range(len(positions)):
+                    obstacle_circles.append([positions[i, 0], positions[i, 1], radii[i]])
+            self._obstacle_circles = torch.tensor(obstacle_circles, dtype=torch.float32, device=self.device) if obstacle_circles else None
+        else:
+            self._obstacle_circles = None
 
         # Get Gravity and Up Direction of World
         sim_view = tensors.create_simulation_view("torch")
@@ -354,7 +372,7 @@ class ChargeprojectEnv(DirectRLEnv):
         velocity_alignment_reward = torch.nn.functional.cosine_similarity(
            self._robot.data.root_lin_vel_w[:, :2], target_unit_vector[:, :2], dim=1
         )
-        velocity_alignment_reward = torch.pow(velocity_alignment_reward, 3.0)  # emphasize forward movement
+        # velocity_alignment_reward = torch.pow(velocity_alignment_reward, 3.0)  # emphasize forward movement
 
         # VAR * 2 if reached target
         # *2 for positive,*1/2 for negative
@@ -471,6 +489,31 @@ class ChargeprojectEnv(DirectRLEnv):
             torch.square(self._robot.data.projected_gravity_b[:, :2]), dim=1
         )
 
+        # Wall Proximity Penalty
+        lidar_hits_w = self._lidar_sensor.data.ray_hits_w  # (batch_size, num_points, 3)
+        rel_hits_w = lidar_hits_w - self._lidar_sensor.data.pos_w.unsqueeze(1)  # (batch_size, num_points, 3)
+
+        # Flatten for robust broadcasting in TorchScript
+        batch_size, num_points, _ = rel_hits_w.shape
+        rel_hits_w_flat = rel_hits_w.view(-1, 3)
+        
+        quat_w_expanded = self._lidar_sensor.data.quat_w.unsqueeze(1).expand(-1, num_points, -1).reshape(-1, 4)
+        
+        rel_hits_b_flat = math_utils.quat_apply_inverse(quat_w_expanded, rel_hits_w_flat)
+        rel_hits_b = rel_hits_b_flat.view(batch_size, num_points, 3)
+
+        dists = torch.norm(rel_hits_b, dim=-1)  # (batch_size, num_points)
+        is_close = dists < self.cfg.wall_close_threshold
+        is_obstacle = rel_hits_b[:, :, 2] > self.cfg.wall_height_threshold
+
+        valid_wall_hits= is_close & is_obstacle
+
+        wall_proximity_score = torch.sum(
+            (self.cfg.wall_close_threshold - dists) * valid_wall_hits.float(), 
+            dim=1
+        )
+
+
         # Feet height penalty
         # base_height = self._robot.data.body_pos_w[:, self.contact_sensor_base_ids, 2]  # [envs, 1]
         # feet_height = self._robot.data.body_pos_w[:, self.contact_sensor_feet_ids, 2] # [envs, num_feet]
@@ -521,6 +564,7 @@ class ChargeprojectEnv(DirectRLEnv):
             "flat_orientation_l2": flat_orientation * self.cfg.flat_orientation_reward_scale * self.step_dt,
             #"feet_height_penalty": feet_height_penalty * self.cfg.feet_height_penalty_scale * self.step_dt,
             #"lower_leg_penalty": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
+            "wall_proximity_penalty": wall_proximity_score * self.cfg.wall_proximity_penalty_scale * self.step_dt,
         } # type: ignore
 
 
@@ -589,7 +633,7 @@ class ChargeprojectEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: Sequence[int] | None):
 
         if env_ids is None:
-            env_ids = self._robot._ALL_INDICES # type: ignore
+            env_ids = self._robot._ALL_INDICES  # type: Sequence[int]
 
         self._robot.reset(env_ids)
         super()._reset_idx(env_ids)
@@ -632,15 +676,11 @@ class ChargeprojectEnv(DirectRLEnv):
         # patches = self.scene.terrain.flat_patches["robot_spawn"]   # shape: (rows, cols, num_patches, 3)
         # patches = patches.reshape(-1, 3)   # patches.reshape(-1, 3)
 
-        # Random XY within spawn area
-        random_x_range = self.cfg.height_map_size_x - self.cfg.spawn_padding * 2
-        random_y_range = self.cfg.height_map_size_y - self.cfg.spawn_padding * 2
-
-        random_x = torch.rand(len(env_ids), device=self.device) * random_x_range - random_x_range / 2.0
-        random_y = torch.rand(len(env_ids), device=self.device) * random_y_range - random_y_range / 2.0
-        random_xy = torch.stack([random_x, random_y], dim=-1)
-        pos_z =  self._get_terrain_height(random_xy).unsqueeze(-1)  # shape: (num_envs, 1)
-        patches = torch.cat([random_xy, pos_z], dim=-1)
+        # Sample from pre-computed valid spawn points
+        num_resets = len(env_ids)
+        # Randomly select indices from the available spawn points
+        spawn_indices = torch.randint(0, len(self._spawn_points), (num_resets,), device=self.device)
+        patches = self._spawn_points[spawn_indices]
 
         n = len(env_ids)
         idx = torch.randperm(patches.shape[0])[:n]
@@ -684,20 +724,82 @@ class ChargeprojectEnv(DirectRLEnv):
         # Check if distance is within tolerance
         return dist < self.cfg.success_tolerance
 
+    def _check_obstacle_collision(self, positions_xy: torch.Tensor, margin: float = 0.5) -> torch.Tensor:
+        """
+        Check if positions collide with any obstacle.
+        Args:
+            positions_xy: (N, 2) tensor of XY positions to check
+            margin: additional clearance around obstacles
+        Returns:
+            (N,) bool tensor, True if position collides with any obstacle
+        """
+        if self._obstacle_circles is None:
+            return torch.zeros(positions_xy.shape[0], dtype=torch.bool, device=self.device)
+
+        # positions_xy: (N, 2), obstacles: (M, 3) where [:, :2] is xy, [:, 2] is radius
+        obs_xy = self._obstacle_circles[:, :2]      # (M, 2)
+        obs_radii = self._obstacle_circles[:, 2]    # (M,)
+
+        # Compute distances: (N, M)
+        diff = positions_xy.unsqueeze(1) - obs_xy.unsqueeze(0)  # (N, 1, 2) - (1, M, 2) = (N, M, 2)
+        distances = torch.linalg.norm(diff, dim=2)               # (N, M)
+
+        # Check collision with any obstacle
+        collides = (distances < (obs_radii + margin)).any(dim=1)  # (N,)
+        return collides
+
     def _move_next_targets(self, env_ids: Sequence[int]):
         # Update current position
         self._desired_pos[env_ids] = self._next_desired_pos[env_ids].clone()
 
         num_resets = len(env_ids)
+        env_ids_t: torch.Tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
 
-        radius = self.cfg.point_max_distance
-        radius += (
-            self.cfg.point_min_distance - self.cfg.point_max_distance
-        ) * torch.rand(num_resets, device=self.device)
-        angle = 2 * math.pi * torch.rand(num_resets, device=self.device)
-        new_target_pos_xy = self._desired_pos[env_ids, :2] + torch.stack(
-            [radius * torch.cos(angle), radius * torch.sin(angle)], dim=1
-        )
+        # Generate new target positions with obstacle avoidance
+        remaining_mask = torch.ones(num_resets, dtype=torch.bool, device=self.device)
+        new_target_pos_xy = torch.zeros(num_resets, 2, device=self.device)
+
+        for _ in range(self.cfg.target_sample_attempts):
+            if not remaining_mask.any():
+                break
+
+            n_remaining = int(remaining_mask.sum().item())
+            remaining_local_idx = remaining_mask.nonzero(as_tuple=True)[0]
+
+            radius = self.cfg.point_max_distance + (
+                self.cfg.point_min_distance - self.cfg.point_max_distance
+            ) * torch.rand(n_remaining, device=self.device)
+            angle = 2 * math.pi * torch.rand(n_remaining, device=self.device)
+
+            # Get positions for remaining environments
+            remaining_env_ids = env_ids_t[remaining_local_idx]
+            candidate_xy = self._desired_pos[remaining_env_ids, :2] + torch.stack(
+                [radius * torch.cos(angle), radius * torch.sin(angle)], dim=1
+            )
+
+            collides = self._check_obstacle_collision(candidate_xy, margin=self.cfg.target_obstacle_margin)
+
+            # Accept non-colliding positions
+            valid_mask = ~collides
+            valid_local_idx = remaining_local_idx[valid_mask]
+            new_target_pos_xy[valid_local_idx] = candidate_xy[valid_mask]
+
+            # Update remaining for next iteration
+            remaining_mask[valid_local_idx] = False
+
+        # For any remaining (couldn't find valid), use last candidate anyway
+        if remaining_mask.any():
+            remaining_local_idx = remaining_mask.nonzero(as_tuple=True)[0]
+            n_remaining = int(remaining_mask.sum().item())
+            radius = self.cfg.point_max_distance + (
+                self.cfg.point_min_distance - self.cfg.point_max_distance
+            ) * torch.rand(n_remaining, device=self.device)
+            angle = 2 * math.pi * torch.rand(n_remaining, device=self.device)
+            remaining_env_ids = env_ids_t[remaining_local_idx]
+            fallback_xy = self._desired_pos[remaining_env_ids, :2] + torch.stack(
+                [radius * torch.cos(angle), radius * torch.sin(angle)], dim=1
+            )
+            new_target_pos_xy[remaining_local_idx] = fallback_xy
 
         new_target_pos_z = self._get_terrain_height(new_target_pos_xy).unsqueeze(-1) + 0.25
         new_target_pos = torch.cat([new_target_pos_xy, new_target_pos_z], dim=-1)
@@ -822,39 +924,40 @@ class ChargeprojectEnv(DirectRLEnv):
         terrain_height_map = self._terrain_height_map
 
         # Convert world coordinates (centered around 0,0) to grid coordinates (0..N)
+        # World X → column index, World Y → row index
         grid_pos = positions_xy / meter_per_grid
         num_rows, num_cols = terrain_height_map.shape
-        grid_pos[:, 0] += num_rows / 2
-        grid_pos[:, 1] += num_cols / 2
-        
+        grid_pos[:, 0] += num_cols / 2  # X → column offset
+        grid_pos[:, 1] += num_rows / 2  # Y → row offset
+
         # Get integer coordinates
-        x0 = torch.floor(grid_pos[:, 0]).long()
-        y0 = torch.floor(grid_pos[:, 1]).long()
-        x1 = x0 + 1
-        y1 = y0 + 1
+        col0 = torch.floor(grid_pos[:, 0]).long()  # X → column
+        row0 = torch.floor(grid_pos[:, 1]).long()  # Y → row
+        col1 = col0 + 1
+        row1 = row0 + 1
 
         # Clamp coordinates to map bounds
-        x0 = torch.clamp(x0, 0, num_rows - 1)
-        x1 = torch.clamp(x1, 0, num_rows - 1)
-        y0 = torch.clamp(y0, 0, num_cols - 1)
-        y1 = torch.clamp(y1, 0, num_cols - 1)
+        col0 = torch.clamp(col0, 0, num_cols - 1)
+        col1 = torch.clamp(col1, 0, num_cols - 1)
+        row0 = torch.clamp(row0, 0, num_rows - 1)
+        row1 = torch.clamp(row1, 0, num_rows - 1)
 
-        # Get heights at grid points
-        h00 = terrain_height_map[x0, y0]
-        h10 = terrain_height_map[x1, y0]
-        h01 = terrain_height_map[x0, y1]
-        h11 = terrain_height_map[x1, y1]
+        # Get heights at grid points (terrain_height_map[row, col])
+        h00 = terrain_height_map[row0, col0]
+        h10 = terrain_height_map[row0, col1]  # same row, different col (X varies)
+        h01 = terrain_height_map[row1, col0]  # different row, same col (Y varies)
+        h11 = terrain_height_map[row1, col1]
 
         # Calculate weights
-        wx = grid_pos[:, 0] - x0.float()
-        wy = grid_pos[:, 1] - y0.float()
+        wx = grid_pos[:, 0] - col0.float()  # X direction weight (column)
+        wy = grid_pos[:, 1] - row0.float()  # Y direction weight (row)
 
         # Bilinear interpolation
-        # Interpolate along x
-        hx0 = h00 * (1 - wx) + h10 * wx
-        hx1 = h01 * (1 - wx) + h11 * wx
-        
-        # Interpolate along y
+        # Interpolate along X (column direction)
+        hx0 = h00 * (1 - wx) + h10 * wx  # At row0, blend col0↔col1
+        hx1 = h01 * (1 - wx) + h11 * wx  # At row1, blend col0↔col1
+
+        # Interpolate along Y (row direction)
         height = hx0 * (1 - wy) + hx1 * wy
 
         return height

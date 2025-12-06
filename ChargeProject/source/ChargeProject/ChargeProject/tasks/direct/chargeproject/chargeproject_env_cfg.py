@@ -85,10 +85,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     height_map_meter_per_grid = terrain_generator.config.meter_per_grid
 
     spawn_padding = 20.0  # meters from edge of height map to spawn robots within
+    target_sample_attempts = 24  # tries per env to sample a target that avoids obstacles
+    target_obstacle_margin = 0.5  # extra meters to keep away from obstacle radius
     
     point_max_distance = 10 #20 #6.0
     point_min_distance = 5 #10 #4.0
-    success_tolerance = 1.0 #1  # meters
+    success_tolerance = 0.5 #1  # meters
     time_out_per_target = 30.0  # seconds
     time_out_decrease_per_target = 0.075  # seconds
     base_on_ground_time = 1.0 #seconds before death if base is on ground
@@ -96,19 +98,20 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     log_targets_reached_max = 10
     log_targets_reached_step = 1
 
+
     marker_colors = 57
 
     # Final rewards
     action_scale = 0.75
     
-    progress_reward_scale = 3.0e3 # 500 # linear version ish
+    progress_reward_scale = 5.0e3 # 500 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 2.5 * 1.0e2 # 10.0 #2 #6
+    velocity_alignment_reward_scale = 1.0e2 # 10.0 #2 #6
     # Multiplied by targets hit reward
-    reach_target_reward_scale = 250.0
+    reach_target_reward_scale = 5000.0
     # forward_vel_reward_scale = 0.0 #1.2#/30
     life_time_reward_scale = 0.005
     # time_penalty_scale = 0.0 #-5
@@ -116,21 +119,24 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # still_penalty_scale = -2.0e-6
     # still_threshold = 2.0
     # motion_metric_pow = 10.0 # for still penalty
-    speed_reward_scale = 3.0e1
+    speed_reward_scale = 1.5e2
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     # z_vel_penalty_scale = -0.001
-    jump_penalty_scale = -2.5e2
+    jump_penalty_scale = -1.2e3
     feet_contact_penalty_scale = -1.0e-7
     # ang_vel_reward_scale = -0.0375
-    joint_torque_reward_scale = -0.75
-    joint_accel_reward_scale = -7.5e-04 # idk this works # -1.5e-07
+    joint_torque_reward_scale = -0.25
+    joint_accel_reward_scale = -2.5e-04 # idk this works # -1.5e-07
     # dof_vel_reward_scale = 0
-    action_rate_reward_scale = -2.0
-    body_angular_velocity_penalty_scale = -5.0
+    action_rate_reward_scale = -0.5
+    body_angular_velocity_penalty_scale = -15.0
     body_vertical_acceleration_penalty_scale = -3.0
-    feet_air_time_reward_scale = 2.5
+    feet_air_time_reward_scale = 25.0
     feet_ground_time_penalty_scale = -5.0e1
     contact_threshold = 1.0e-2
-    undesired_contact_reward_scale = -2.5e2 ## -0.75
+    undesired_contact_reward_scale = -2.0e2 ## -0.75
     flat_orientation_reward_scale = -2.0e3
+    wall_proximity_penalty_scale = -5.0e1
+    wall_close_threshold = 0.5 # meters
+    wall_height_threshold = -0.2

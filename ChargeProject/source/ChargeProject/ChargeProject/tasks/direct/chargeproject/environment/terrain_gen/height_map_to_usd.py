@@ -1,16 +1,21 @@
 import numpy as np
 from pxr import Usd, UsdGeom, Vt, Gf, UsdPhysics, UsdShade
 
-def save_height_map_to_usd(heightmap, usd_path, meter_per_grid=0.1):
+from .obstacles_generator import append_trimesh_meshes, mesh_placer
+from .mesh_loader import make_custom_meshes, make_cube_meshes, make_sphere_meshes
+from .custom_terrain_config import CustomTerrainCfg
+
+def save_height_map_to_usd(heightmap, config: CustomTerrainCfg, mesh_placement: dict | None, spawn_points: np.ndarray | None = None) -> None:
     """
     heightmap: (rows, cols) float32 numpy array (높이 데이터)
     usd_path: 저장할 .usd 파일 경로 (예: "terrain.usd")
     meter_per_grid: 격자 간격
+    spawn_points: (Optional) (N, 3) numpy array of spawn points for debugging
     """
     rows, cols = heightmap.shape
     
     # 1. USD 스테이지 생성
-    stage = Usd.Stage.CreateNew(usd_path)
+    stage = Usd.Stage.CreateNew(str(config.SAVE_PATH))
     
     # 기본 UpAxis를 Z축으로 설정 (Isaac Sim 표준)
     UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
@@ -33,11 +38,11 @@ def save_height_map_to_usd(heightmap, usd_path, meter_per_grid=0.1):
     
     # (1) 정점(Points) 생성: (x, y, z)
     # x: 행 방향, y: 열 방향
-    x_length = (cols-1) * meter_per_grid
-    y_length = (rows-1) * meter_per_grid
-    x = np.linspace(-x_length/2, x_length/2, rows)
-    y = np.linspace(-y_length/2, y_length/2, cols)
-    xv, yv = np.meshgrid(x, y, indexing='ij') # indexing='ij'로 행렬 좌표계 일치
+    x_length = (cols-1) * config.meter_per_grid
+    y_length = (rows-1) * config.meter_per_grid
+    x = np.linspace(-x_length/2, x_length/2, cols)
+    y = np.linspace(-y_length/2, y_length/2, rows)
+    xv, yv = np.meshgrid(x, y, indexing='xy')
     
     # 정점 배열 합치기 (N, 3)
     points = np.column_stack((xv.ravel(), yv.ravel(), heightmap.ravel()))
@@ -45,19 +50,19 @@ def save_height_map_to_usd(heightmap, usd_path, meter_per_grid=0.1):
     # (2) 면(Topology) 생성: 격자를 삼각형으로 연결
     # Vertex 인덱스 계산을 위한 그리드 생성
     # 마지막 행과 열은 사각형의 시작점이 될 수 없으므로 제외
-    r_idx = np.arange(rows - 1)
-    c_idx = np.arange(cols - 1)
-    rv, cv = np.meshgrid(r_idx, c_idx, indexing='ij')
+    row_idx = np.arange(rows - 1)
+    col_idx = np.arange(cols - 1)
+    cv, rv = np.meshgrid(col_idx, row_idx, indexing='xy')
     
     # 현재 점(top-left)의 1차원 인덱스들
     p_idxs = rv * cols + cv
     
     # 사각형 하나를 두 개의 삼각형으로 쪼개기 위한 인덱스 계산
-    # Triangle 1: (tl, bl, tr) -> (idx, idx+cols, idx+1)
-    # Triangle 2: (tr, bl, br) -> (idx+1, idx+cols, idx+cols+1)
+    # Triangle 1: (tl, tr, bl) -> (idx, idx+1, idx+cols)
+    # Triangle 2: (tr, br, bl) -> (idx+1, idx+cols+1, idx+cols)
     
-    t1 = np.column_stack((p_idxs.ravel(), p_idxs.ravel() + cols, p_idxs.ravel() + 1))
-    t2 = np.column_stack((p_idxs.ravel() + 1, p_idxs.ravel() + cols, p_idxs.ravel() + cols + 1))
+    t1 = np.column_stack((p_idxs.ravel(), p_idxs.ravel() + 1, p_idxs.ravel() + cols))
+    t2 = np.column_stack((p_idxs.ravel() + 1, p_idxs.ravel() + cols + 1, p_idxs.ravel() + cols))
     
     # 전체 인덱스 리스트 (Face Vertex Indices)
     face_vertex_indices = np.vstack((t1, t2)).reshape(-1)
@@ -66,7 +71,49 @@ def save_height_map_to_usd(heightmap, usd_path, meter_per_grid=0.1):
     face_vertex_counts = np.full(len(face_vertex_indices) // 3, 3)
 
     # -------------------------------------------------------
-    # 4. USD 속성 설정 (pxr 타입으로 변환하여 입력)
+    # 4. 장해물 설치
+    # -------------------------------------------------------
+    if config.obstacles is not None:
+        if mesh_placement is None:
+            raise ValueError("mesh placement is not generated")
+        meshes = []
+        for obstacles_config in config.obstacles:
+            mesh_type = obstacles_config.type
+            placement = mesh_placement.get(mesh_type, None)
+            if placement is None:
+                continue
+            match mesh_type:
+                case "custom_mesh":
+                    if obstacles_config.path is None:
+                        raise ValueError("Custom mesh path is not specified in the configuration.")
+                    custom_meshes = make_custom_meshes(
+                        path=obstacles_config.path,
+                        mesh_placement=placement,
+                    )
+                    meshes.extend(custom_meshes)
+                case "cube":
+                    cube_meshes = make_cube_meshes(
+                        mesh_placement=placement,
+                    )
+                    meshes.extend(cube_meshes)
+                case "sphere":
+                    sphere_meshes = make_sphere_meshes(
+                        mesh_placement=placement,
+                    )
+                    meshes.extend(sphere_meshes)
+                case _:
+                    raise ValueError(f"Unknown obstacle type: {mesh_type}")
+            
+            # 메쉬들을 지형 메쉬에 추가
+            points, face_vertex_indices, face_vertex_counts = append_trimesh_meshes(
+                points,
+                face_vertex_indices,
+                face_vertex_counts,
+                meshes,
+            )
+
+    # -------------------------------------------------------
+    # 5. USD 속성 설정 (pxr 타입으로 변환하여 입력)
     # -------------------------------------------------------
     
     # Points 설정
@@ -105,6 +152,34 @@ def save_height_map_to_usd(heightmap, usd_path, meter_per_grid=0.1):
     # 메쉬에 재질 바인딩 (Binding)
     UsdShade.MaterialBindingAPI.Apply(mesh_prim.GetPrim()).Bind(material)
 
+    # -------------------------------------------------------
+    # 6. (Optional) Debug Mesh Color 설정
+    # -------------------------------------------------------
+    mesh_prim.GetDisplayColorAttr().Set([Gf.Vec3f(0.15, 0.2, 0.125)])  # 녹색 계열로 설정 (디버그용)
+
+
+    # -------------------------------------------------------
+    # 6. (Optional) Debug Spawn Points
+    # -------------------------------------------------------
+    if spawn_points is not None:
+        spawn_root_path = "/World/debug/spawn_points"
+        # Create a scope to organize debug points
+        UsdGeom.Scope.Define(stage, spawn_root_path)
+        
+        for i, point in enumerate(spawn_points):
+            # Create a sphere for each spawn point
+            sphere_path = f"{spawn_root_path}/point_{i}"
+            sphere_prim = UsdGeom.Sphere.Define(stage, sphere_path)
+            
+            # Set position (x, y, z)
+            sphere_prim.AddTranslateOp().Set(Gf.Vec3d(float(point[0]), float(point[1]), float(point[2])))
+            
+            # Set radius (small enough to be a marker)
+            sphere_prim.GetRadiusAttr().Set(0.2)
+            
+            # Set color (Red for visibility)
+            sphere_prim.GetDisplayColorAttr().Set([Gf.Vec3f(1.0, 0.0, 0.0)])
+
     # 5. 저장
     stage.GetRootLayer().Save()
-    print(f"Successfully saved USD directly to: {usd_path}")
+    print(f"Successfully saved USD directly to: {config.SAVE_PATH}")
