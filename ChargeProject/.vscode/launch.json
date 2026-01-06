@@ -114,7 +114,7 @@
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "2000", "--video_length", "2000", "--rendering_mode", "quality",
                       "--num_envs", "256",
-                       "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
+                       "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v2_debug.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

@@ -155,7 +155,7 @@ def save_height_map_to_usd(heightmap, config: CustomTerrainCfg, mesh_placement: 
     # -------------------------------------------------------
     # 6. (Optional) Debug Mesh Color 설정
     # -------------------------------------------------------
-    mesh_prim.GetDisplayColorAttr().Set([Gf.Vec3f(0.15, 0.2, 0.125)])  # 녹색 계열로 설정 (디버그용)
+    mesh_prim.GetDisplayColorAttr().Set([Gf.Vec3f(0.05, 0.06, 0.025)])  # 녹색 계열로 설정 (디버그용)
 
 
     # -------------------------------------------------------

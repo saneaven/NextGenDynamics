@@ -514,6 +514,9 @@ class ChargeprojectEnv(DirectRLEnv):
             dim=1
         )
 
+        wall_proximity_score = wall_proximity_score / float(num_points)
+        wall_proximity_score = wall_proximity_score * wall_proximity_score * torch.sign(wall_proximity_score)
+
 
         # Feet height penalty
         # base_height = self._robot.data.body_pos_w[:, self.contact_sensor_base_ids, 2]  # [envs, 1]

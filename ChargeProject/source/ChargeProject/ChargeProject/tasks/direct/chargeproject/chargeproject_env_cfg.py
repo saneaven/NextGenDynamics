@@ -119,7 +119,7 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # still_penalty_scale = -2.0e-6
     # still_threshold = 2.0
     # motion_metric_pow = 10.0 # for still penalty
-    speed_reward_scale = 1.5e2
+    speed_reward_scale = 2.5e2
     #lin_vel_reward_scale = 1.5
     #yaw_rate_reward_scale = 0.75
     # z_vel_penalty_scale = -0.001
@@ -137,6 +137,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     contact_threshold = 1.0e-2
     undesired_contact_reward_scale = -2.0e2 ## -0.75
     flat_orientation_reward_scale = -2.0e3
-    wall_proximity_penalty_scale = -5.0e1
-    wall_close_threshold = 0.5 # meters
+    wall_proximity_penalty_scale = -1.0e3
+    wall_close_threshold = 1.5 # meters
     wall_height_threshold = -0.2
