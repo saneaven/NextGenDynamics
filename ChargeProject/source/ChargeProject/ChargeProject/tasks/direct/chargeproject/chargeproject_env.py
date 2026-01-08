@@ -14,7 +14,7 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import build_bev, transform_world_to_ego
+from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import build_bev, transform_world_to_ego, BEVDebugVisualizer
 from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.custom_terrain_generator import terrain_generator
 from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.mesh_loader import get_obstacle_radius
 from .environment.spider_robot import SPIDER_ACTUATOR_CFG
@@ -118,6 +118,7 @@ class ChargeprojectEnv(DirectRLEnv):
 
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
+        self._bev_debug_visualizer = BEVDebugVisualizer()
 
         self.extras["log"] = dict()
 
@@ -161,6 +162,7 @@ class ChargeprojectEnv(DirectRLEnv):
             self.scene.filter_collisions(global_prim_paths=[self.cfg.terrain.prim_path])
         # add articulation to scene
         self.scene.articulations["robot"] = self._robot
+
         # add lights
         # light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         # light_cfg.func("/World/Light", light_cfg)
@@ -313,6 +315,10 @@ class ChargeprojectEnv(DirectRLEnv):
         )
         # lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
         # lidar_data = lidar_data.view(self.num_envs, 128, 32, 3)
+
+        #################### DEBUG VISUALIZATION ####################
+        self._bev_debug_visualizer.update(bev_data.cpu(), ego_points.cpu())
+        ###############################################################
         
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(

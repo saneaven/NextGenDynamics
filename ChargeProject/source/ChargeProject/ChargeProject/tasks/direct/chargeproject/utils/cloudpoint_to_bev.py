@@ -1,4 +1,5 @@
 import torch
+import matplotlib.pyplot as plt
 from typing import Optional, Sequence, Tuple
 
 # -------------------------------
@@ -191,3 +192,247 @@ def build_bev(
     # Keep NCHW semantics but set NHWC (channels_last) strides for faster Conv2d kernels
     bev_tensor = bev_tensor.contiguous(memory_format=torch.channels_last)
     return bev_tensor
+
+
+# -------------------------------
+# Visualization helpers
+# -------------------------------
+
+def visualize_bev(
+    bev_tensor: torch.Tensor,
+    batch_idx: int = 0,
+    channel_names: Sequence[str] = ("max_height", "mean_height", "mean_intensity", "density"),
+    x_limits: Tuple[float, float] = (-12.8, 12.8),
+    y_limits: Tuple[float, float] = (-12.8, 12.8),
+    save_path: Optional[str] = None
+) -> None:
+    """
+    Visualize BEV tensor channels in a 2x2 subplot grid.
+
+    Args:
+        bev_tensor: (B, C, H, W) BEV tensor from build_bev()
+        batch_idx: which batch sample to visualize
+        channel_names: names for each channel
+        x_limits: (x_min, x_max) in meters
+        y_limits: (y_min, y_max) in meters
+        save_path: if provided, save figure to this path instead of showing
+    """
+    bev_np = bev_tensor[batch_idx].cpu().numpy()  # (C, H, W)
+    num_channels = bev_np.shape[0]
+
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    axes = axes.flatten()
+
+    for i in range(min(num_channels, 4)):
+        ax = axes[i]
+        im = ax.imshow(
+            bev_np[i],
+            origin='lower',
+            extent=[x_limits[0], x_limits[1], y_limits[0], y_limits[1]],
+            cmap='viridis',
+            vmin=0, vmax=1
+        )
+        ax.set_title(channel_names[i] if i < len(channel_names) else f"Channel {i}")
+        ax.set_xlabel("X (m)")
+        ax.set_ylabel("Y (m)")
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    for i in range(num_channels, 4):
+        axes[i].axis('off')
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+        plt.close()
+    else:
+        plt.show()
+
+
+def visualize_bev_with_pointcloud(
+    ego_points: torch.Tensor,
+    bev_tensor: torch.Tensor,
+    batch_idx: int = 0,
+    x_limits: Tuple[float, float] = (-12.8, 12.8),
+    y_limits: Tuple[float, float] = (-12.8, 12.8),
+    z_limits: Tuple[float, float] = (-3.0, 2.0),
+    save_path: Optional[str] = None
+) -> None:
+    """
+    Side-by-side comparison of pointcloud (top-down) and BEV max_height channel.
+
+    Args:
+        ego_points: (B, P, 3) points in ego frame
+        bev_tensor: (B, C, H, W) BEV tensor
+        batch_idx: which batch sample to visualize
+        x_limits, y_limits, z_limits: spatial limits in meters
+        save_path: if provided, save figure to this path
+    """
+    points_np = ego_points[batch_idx].cpu().numpy()  # (P, 3)
+    bev_np = bev_tensor[batch_idx, 0].cpu().numpy()  # max_height channel (H, W)
+
+    # Filter points within limits for visualization
+    mask = (
+        (points_np[:, 0] >= x_limits[0]) & (points_np[:, 0] < x_limits[1]) &
+        (points_np[:, 1] >= y_limits[0]) & (points_np[:, 1] < y_limits[1]) &
+        (points_np[:, 2] >= z_limits[0]) & (points_np[:, 2] <= z_limits[1])
+    )
+    filtered_points = points_np[mask]
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Left: Pointcloud top-down view
+    ax0 = axes[0]
+    if len(filtered_points) > 0:
+        z_norm = (filtered_points[:, 2] - z_limits[0]) / (z_limits[1] - z_limits[0])
+        scatter = ax0.scatter(
+            filtered_points[:, 0], filtered_points[:, 1],
+            c=z_norm, cmap='viridis', s=1, vmin=0, vmax=1
+        )
+        fig.colorbar(scatter, ax=ax0, label='Height (normalized)')
+    ax0.set_xlim(x_limits)
+    ax0.set_ylim(y_limits)
+    ax0.set_aspect('equal')
+    ax0.set_title(f"Pointcloud Top-Down ({len(filtered_points)} pts)")
+    ax0.set_xlabel("X (m)")
+    ax0.set_ylabel("Y (m)")
+
+    # Right: BEV max_height
+    ax1 = axes[1]
+    im = ax1.imshow(
+        bev_np,
+        origin='lower',
+        extent=[x_limits[0], x_limits[1], y_limits[0], y_limits[1]],
+        cmap='viridis',
+        vmin=0, vmax=1
+    )
+    ax1.set_title("BEV max_height")
+    ax1.set_xlabel("X (m)")
+    ax1.set_ylabel("Y (m)")
+    fig.colorbar(im, ax=ax1, label='Height (normalized)')
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+        plt.close()
+    else:
+        plt.show()
+
+
+class BEVDebugVisualizer:
+    """
+    Real-time BEV visualizer for debugging during training/inference.
+    Uses matplotlib interactive mode for non-blocking updates.
+    """
+
+    def __init__(
+        self,
+        x_limits: Tuple[float, float] = (-12.8, 12.8),
+        y_limits: Tuple[float, float] = (-12.8, 12.8),
+        z_limits: Tuple[float, float] = (-3.0, 2.0),
+        channel_names: Sequence[str] = ("max_height", "mean_height", "mean_intensity", "density"),
+    ):
+        self.x_limits = x_limits
+        self.y_limits = y_limits
+        self.z_limits = z_limits
+        self.channel_names = channel_names
+
+        plt.ion()
+        self.fig, self.axes = plt.subplots(2, 3, figsize=(15, 10))
+        self.axes = self.axes.flatten()
+        self.images = [None] * 6
+        self.scatter = None
+        self.initialized = False
+
+    def update(
+        self,
+        bev_tensor: torch.Tensor,
+        ego_points: Optional[torch.Tensor] = None,
+        batch_idx: int = 0
+    ) -> None:
+        """
+        Update the visualization with new data (non-blocking).
+
+        Args:
+            bev_tensor: (B, C, H, W) BEV tensor
+            ego_points: (B, P, 3) optional pointcloud for comparison
+            batch_idx: which batch to visualize
+        """
+        bev_np = bev_tensor[batch_idx].cpu().numpy()
+
+        if not self.initialized:
+            self._init_plots(bev_np, ego_points, batch_idx)
+            self.initialized = True
+        else:
+            self._update_plots(bev_np, ego_points, batch_idx)
+
+        self.fig.canvas.draw()
+        self.fig.canvas.flush_events()
+
+    def _init_plots(self, bev_np, ego_points, batch_idx):
+        # BEV channels (first 4 subplots)
+        for i in range(min(4, bev_np.shape[0])):
+            ax = self.axes[i]
+            self.images[i] = ax.imshow(
+                bev_np[i],
+                origin='lower',
+                extent=[self.x_limits[0], self.x_limits[1], self.y_limits[0], self.y_limits[1]],
+                cmap='viridis', vmin=0, vmax=1
+            )
+            title = self.channel_names[i] if i < len(self.channel_names) else f"Channel {i}"
+            ax.set_title(title)
+            ax.set_xlabel("X (m)")
+            ax.set_ylabel("Y (m)")
+
+        # Pointcloud (5th subplot)
+        ax_pc = self.axes[4]
+        if ego_points is not None:
+            points_np = ego_points[batch_idx].cpu().numpy()
+            mask = self._get_valid_mask(points_np)
+            filtered = points_np[mask]
+            if len(filtered) > 0:
+                z_norm = (filtered[:, 2] - self.z_limits[0]) / (self.z_limits[1] - self.z_limits[0])
+                self.scatter = ax_pc.scatter(filtered[:, 0], filtered[:, 1], c=z_norm, cmap='viridis', s=1, vmin=0, vmax=1)
+        ax_pc.set_xlim(self.x_limits)
+        ax_pc.set_ylim(self.y_limits)
+        ax_pc.set_aspect('equal')
+        ax_pc.set_title("Pointcloud")
+        ax_pc.set_xlabel("X (m)")
+        ax_pc.set_ylabel("Y (m)")
+
+        # Hide 6th subplot
+        self.axes[5].axis('off')
+        plt.tight_layout()
+
+    def _update_plots(self, bev_np, ego_points, batch_idx):
+        for i in range(min(4, bev_np.shape[0])):
+            img = self.images[i]
+            if img is not None:
+                img.set_data(bev_np[i])
+
+        if ego_points is not None:
+            ax_pc = self.axes[4]
+            points_np = ego_points[batch_idx].cpu().numpy()
+            mask = self._get_valid_mask(points_np)
+            filtered = points_np[mask]
+            if self.scatter is not None:
+                self.scatter.remove()
+            if len(filtered) > 0:
+                z_norm = (filtered[:, 2] - self.z_limits[0]) / (self.z_limits[1] - self.z_limits[0])
+                self.scatter = ax_pc.scatter(filtered[:, 0], filtered[:, 1], c=z_norm, cmap='viridis', s=1, vmin=0, vmax=1)
+            ax_pc.set_title(f"Pointcloud ({len(filtered)} pts)")
+
+    def _get_valid_mask(self, points_np):
+        return (
+            (points_np[:, 0] >= self.x_limits[0]) & (points_np[:, 0] < self.x_limits[1]) &
+            (points_np[:, 1] >= self.y_limits[0]) & (points_np[:, 1] < self.y_limits[1]) &
+            (points_np[:, 2] >= self.z_limits[0]) & (points_np[:, 2] <= self.z_limits[1])
+        )
+
+    def save_snapshot(self, path: str) -> None:
+        """Save current figure to file."""
+        self.fig.savefig(path, dpi=150)
+
+    def close(self) -> None:
+        """Close the visualizer and disable interactive mode."""
+        plt.ioff()
+        plt.close(self.fig)

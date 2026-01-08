@@ -33,8 +33,8 @@ class CustomTerrainCfg:
     hill_noise_octaves: int = 32  # Number of octaves for hill noise
 
     obstacles: tuple[Obstacle, ...] | None = (
-        Obstacle(type=ObstacleType.CUBE, scale_range=(2.0, 4.0), num_instances=700),
-        Obstacle(type=ObstacleType.SPHERE, scale_range=(2.0, 4.0), num_instances=500),
+        Obstacle(type=ObstacleType.CUBE, scale_range=(2.0, 4.0), num_instances=200),
+        Obstacle(type=ObstacleType.SPHERE, scale_range=(2.0, 4.0), num_instances=100),
     )
     # obstacles: tuple[Obstacle, ...] | None = None
 

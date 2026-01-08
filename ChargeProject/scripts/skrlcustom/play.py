@@ -92,10 +92,11 @@ if version.parse(skrl.__version__) < version.parse(SKRL_VERSION):
     )
     exit()
 
-if args_cli.ml_framework.startswith("torch"):
-    from skrl.utils.runner.torch import Runner
-elif args_cli.ml_framework.startswith("jax"):
-    from skrl.utils.runner.jax import Runner
+from skrl.memories.torch import RandomMemory
+from skrl.agents.torch.ppo import PPO_RNN
+from skrl.resources.preprocessors.torch import RunningStandardScaler
+from skrl.resources.schedulers.torch import KLAdaptiveLR
+from skrl.utils import set_seed
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -114,11 +115,13 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import ChargeProject.tasks  # noqa: F401
+from ChargeProject.tasks.direct.chargeproject.agents.skrl_custom_ppo_model import SharedRecurrentModel
+from ChargeProject.tasks.direct.chargeproject.utils.onnx_exporter import export_onnx
 
 # config shortcuts
 if args_cli.agent is None:
     algorithm = args_cli.algorithm.lower()
-    agent_cfg_entry_point = "skrl_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_{algorithm}_cfg_entry_point"
+    agent_cfg_entry_point = "skrl_custom_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_custom_{algorithm}_cfg_entry_point"
 else:
     agent_cfg_entry_point = args_cli.agent
 
@@ -194,17 +197,66 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     # wrap around environment for skrl
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)  # same as: `wrap_env(env, wrapper="auto")`
 
-    # configure and instantiate the skrl runner
-    # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-    experiment_cfg["trainer"]["close_environment_at_exit"] = False
-    experiment_cfg["agent"]["experiment"]["write_interval"] = 0  # don't log to TensorBoard
-    experiment_cfg["agent"]["experiment"]["checkpoint_interval"] = 0  # don't generate checkpoints
-    runner = Runner(env, experiment_cfg)
+    # configure and instantiate the agent manually (same as train.py)
+    device = env.device
+
+    # Generate Agent (same as train.py)
+    models = {}
+    models["policy"] = SharedRecurrentModel(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        device=device,
+        num_envs=env.num_envs,
+        init_log_std=experiment_cfg["model"]["log_std_init"],
+    )
+    models["value"] = models["policy"]
+
+    print("[INFO] Exporting ONNX model...")
+    export_onnx(models["policy"])
+    print("[INFO] ONNX model exported to 'policy_step.onnx'")
+
+    # Configure Agent
+    cfg = experiment_cfg["agent"].copy()
+
+    # Convert learning_rate_scheduler string to class (same as train.py)
+    scheduler_cfg = cfg.get("learning_rate_scheduler")
+    if isinstance(scheduler_cfg, str):
+        scheduler_map = {
+            "KLAdaptiveLR": KLAdaptiveLR,
+        }
+        try:
+            cfg["learning_rate_scheduler"] = scheduler_map[scheduler_cfg]
+        except KeyError as exc:
+            raise ValueError(f"Unknown learning_rate_scheduler '{scheduler_cfg}'. ") from exc
+
+    # set rewards_shaper
+    shaper_scale = cfg.get("rewards_shaper_scale", 1.0)
+    cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * shaper_scale
+
+    cfg["state_preprocessor"] = RunningStandardScaler
+    cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+    cfg["value_preprocessor"] = RunningStandardScaler
+    cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
+
+    # Memory (minimum size during evaluation)
+    memory = RandomMemory(memory_size=cfg["rollouts"], num_envs=env.num_envs, device=device)
+
+    # Generate Agent
+    agent = PPO_RNN(
+        models=models,
+        memory=memory,
+        cfg=cfg,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        device=device,
+    )
 
     print(f"[INFO] Loading model checkpoint from: {resume_path}")
-    runner.agent.load(resume_path)
+    agent.load(resume_path)
     # set agent to evaluation mode
-    runner.agent.set_running_mode("eval")
+    agent.set_running_mode("eval")
+    # initialize agent (RNN states)
+    agent.init()
 
     # reset environment
     obs, _ = env.reset()
@@ -216,7 +268,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         # run everything in inference mode
         with torch.inference_mode():
             # agent stepping
-            outputs = runner.agent.act(obs, timestep=0, timesteps=0)
+            outputs = agent.act(obs, timestep=0, timesteps=0)
+
             # - multi-agent (deterministic) actions
             if hasattr(env, "possible_agents"):
                 actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
@@ -224,7 +277,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
             else:
                 actions = outputs[-1].get("mean_actions", outputs[0])
             # env stepping
-            obs, _, _, _, _ = env.step(actions)
+            obs, _, terminated, truncated, _ = env.step(actions) # observations, rewards, terminations, truncations, infos
+
+            # RNN state management
+            if agent._rnn:
+                agent._rnn_initial_states["policy"] = agent._rnn_final_states["policy"]
+                if agent.policy is not agent.value:
+                    agent._rnn_initial_states["value"] = agent._rnn_final_states["value"]
+
+                finished = (terminated | truncated).nonzero(as_tuple=False)
+                if finished.numel():
+                    for s in agent._rnn_initial_states["policy"]:
+                        s[:, finished[:, 0]] = 0
+                    if agent.policy is not agent.value:
+                        for s in agent._rnn_initial_states["value"]:
+                            s[:, finished[:, 0]] = 0
+
         if args_cli.video:
             timestep += 1
             # exit the play loop after recording one video

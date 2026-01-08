@@ -121,15 +121,15 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: Play Environment",
+            "name": "Python: Play Environment (custom)",
             "type": "python",
             "request": "launch",
             "args": [
                 "--task",
                 "Chargeproject-Direct-v0",
                 "--num_envs",
-                "8",
-                // "--checkpoint", "checkpoints/Spider/spiderbot_custom_mj_v0.7.pt"
+                "16",
+                "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
             ],
             "program": "${workspaceFolder}/scripts/skrlcustom/play.py",
             "console": "integratedTerminal"
