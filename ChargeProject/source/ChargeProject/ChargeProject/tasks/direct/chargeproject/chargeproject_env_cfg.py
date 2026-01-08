@@ -104,12 +104,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # Final rewards
     action_scale = 0.75
     
-    progress_reward_scale = 5.0e3 # 500 # linear version ish
+    progress_reward_scale = 5.0e4 # 500 # linear version ish
     #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
     #progress_target_divisor = 7.5
-    velocity_alignment_reward_scale = 1.0e2 # 10.0 #2 #6
+    velocity_alignment_reward_scale = 2.5e2 # 10.0 #2 #6
     # Multiplied by targets hit reward
     reach_target_reward_scale = 5000.0
     # forward_vel_reward_scale = 0.0 #1.2#/30
@@ -137,6 +137,6 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     contact_threshold = 1.0e-2
     undesired_contact_reward_scale = -2.0e2 ## -0.75
     flat_orientation_reward_scale = -2.0e3
-    wall_proximity_penalty_scale = -1.0e3
+    wall_proximity_penalty_scale = 0.0 # -1.0e3
     wall_close_threshold = 1.5 # meters
     wall_height_threshold = -0.2

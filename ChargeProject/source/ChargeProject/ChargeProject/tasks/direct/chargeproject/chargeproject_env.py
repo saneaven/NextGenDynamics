@@ -118,7 +118,8 @@ class ChargeprojectEnv(DirectRLEnv):
 
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
-        self._bev_debug_visualizer = BEVDebugVisualizer()
+
+        # self._bev_debug_visualizer = BEVDebugVisualizer()
 
         self.extras["log"] = dict()
 
@@ -317,9 +318,9 @@ class ChargeprojectEnv(DirectRLEnv):
         # lidar_data = lidar_data.view(self.num_envs, 128, 32, 3)
 
         #################### DEBUG VISUALIZATION ####################
-        self._bev_debug_visualizer.update(bev_data.cpu(), ego_points.cpu())
+        # self._bev_debug_visualizer.update(bev_data.cpu(), ego_points.cpu())
         ###############################################################
-        
+
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
             [

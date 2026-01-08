@@ -77,13 +77,20 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         self.hidden_size = 512
         self.sequence_length = 32
 
-        self.lstm = nn.LSTM(
+        # self.lstm = nn.LSTM(
+        #     input_size=512,
+        #     hidden_size=self.hidden_size,
+        #     num_layers=self.num_layers,
+        #     batch_first=True,    # Input/output tensors are (batch, seq, feature)
+        # )
+
+        self.gru = nn.GRU(
             input_size=512,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
         )
-
+        
         self.net = nn.Sequential(
             nn.Linear(self.hidden_size, 256),
             nn.ReLU(),
@@ -104,23 +111,23 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
 
     
     def get_specification(self):
-        # return {
-        #     "rnn": {
-        #         "sequence_length": self.sequence_length,
-        #         "sizes": [
-        #             (self.num_layers, self.num_envs, self.hidden_size),  # gru memory
-        #         ]
-        #     }
-        # }
         return {
             "rnn": {
                 "sequence_length": self.sequence_length,
                 "sizes": [
-                    (self.num_layers, self.num_envs, self.hidden_size),  # hx
-                    (self.num_layers, self.num_envs, self.hidden_size),  # cx
+                    (self.num_layers, self.num_envs, self.hidden_size),  # gru memory
                 ]
             }
         }
+        # return {
+        #     "rnn": {
+        #         "sequence_length": self.sequence_length,
+        #         "sizes": [
+        #             (self.num_layers, self.num_envs, self.hidden_size),  # hx
+        #             (self.num_layers, self.num_envs, self.hidden_size),  # cx
+        #         ]
+        #     }
+        # }
     
     def act(self, inputs, role):
         if role == "policy":
@@ -150,12 +157,12 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             fused = torch.cat([obs_encoded, height_encoded, bev_encoded], dim=-1)
 
             # LSTM
-            lstm_output, rnn_dict = self.lstm_rollout(self.lstm, fused, terminated, inputs["rnn"])
+            # lstm_output, rnn_dict = self.lstm_rollout(self.lstm, fused, terminated, inputs["rnn"])
             # GRU
-            # rnn_output, rnn_dict = self.gru_rollout(self.gru, fused, None, inputs["rnn"])
+            rnn_output, rnn_dict = self.gru_rollout(self.gru, fused, None, inputs["rnn"])
 
             # Final layers
-            net = self.net(lstm_output)
+            net = self.net(rnn_output)
 
             self._shared_output = net, rnn_dict
 
