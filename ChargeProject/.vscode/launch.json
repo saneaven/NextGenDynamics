@@ -88,7 +88,7 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                        // "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
+                        "--checkpoint", "checkpoints/SpiderV2_1/spiderbot_base_v0.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -114,7 +114,7 @@
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
                       "--video", "--video_interval", "2000", "--video_length", "2000", "--rendering_mode", "quality",
                       "--num_envs", "256",
-                       "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v2_debug.pt"
+                       "--checkpoint", "checkpoints/SpiderV2_1/spiderbot_debug.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",
@@ -129,7 +129,7 @@
                 "Chargeproject-Direct-v0",
                 "--num_envs",
                 "16",
-                "--checkpoint", "checkpoints/SpiderV2/spiderbot_mj_base_v1.6.pt"
+                "--checkpoint", "checkpoints/SpiderV2_1/spiderbot_debug.pt"
             ],
             "program": "${workspaceFolder}/scripts/skrlcustom/play.py",
             "console": "integratedTerminal"
