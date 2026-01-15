@@ -27,8 +27,10 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         obs_dim = self.observation_space["observations"].shape[0]
         height_dim = self.observation_space["height_data"].shape
         bev_dim = self.observation_space["bev_data"].shape
+        nav_dim = self.observation_space["nav_data"].shape
         assert height_dim == (64, 64), "Expected height_data to be of shape (64, 64)"
         assert bev_dim == (3, 64, 64), "Expected bev_data to be of shape (3, 64, 64)"
+        assert nav_dim == (1, 33, 33), "Expected nav_data to be of shape (1, 33, 33)"
         act_dim = self.num_actions
         self.num_envs = num_envs
 
@@ -73,6 +75,23 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             nn.ReLU(),
         )
 
+        # Nav_data encoder CNN (1x33x33 to 128)
+        self.nav_encoder = nn.Sequential(
+            nn.Conv2d(1, 4, kernel_size=3, stride=2, padding=1),   # 33x33 -> 17x17
+            nn.ReLU(),
+            nn.Conv2d(4, 8, kernel_size=3, stride=2, padding=1),  # 17x17 -> 9x9
+            nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, stride=2, padding=1), # 9x9 -> 5x5
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1), # 5x5 -> 3x3
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1), # 3x3 -> 2x2
+            nn.ReLU(),
+            nn.Flatten(),  # 64 * 2 * 2 = 256
+            nn.Linear(256, 128),
+            nn.ReLU(),
+        )
+
         self.num_layers = 1
         self.hidden_size = 512
         self.sequence_length = 32
@@ -85,7 +104,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
         # )
 
         self.gru = nn.GRU(
-            input_size=512,
+            input_size=640,  # 256 (obs) + 128 (height) + 128 (bev) + 128 (nav)
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             batch_first=True,    # Input/output tensors are (batch, seq, feature)
@@ -142,19 +161,19 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             observations = states["observations"]
             height_data = states["height_data"]
             bev_data = states["bev_data"]
-            
+            nav_data = states["nav_data"]
+
             terminated = inputs.get("terminated", None)
             rnn_dict = {}
-            
+
             # Encode observations
             obs_encoded = self.obs_encoder(observations)
             height_encoded = self.height_encoder(height_data.unsqueeze(1))  # Add channel dimension
-            bev_encoded  = self.bev_encoder(bev_data)  # Add channel dimension
+            bev_encoded = self.bev_encoder(bev_data)
+            nav_encoded = self.nav_encoder(nav_data)
 
             # Fusion
-            # fused = self.fusion(encoded)
-
-            fused = torch.cat([obs_encoded, height_encoded, bev_encoded], dim=-1)
+            fused = torch.cat([obs_encoded, height_encoded, bev_encoded, nav_encoded], dim=-1)
 
             # LSTM
             # lstm_output, rnn_dict = self.lstm_rollout(self.lstm, fused, terminated, inputs["rnn"])

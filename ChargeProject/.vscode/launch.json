@@ -88,7 +88,7 @@
             "type": "python",
             "request": "launch",
             "args" : ["--task", "Chargeproject-Direct-v0", "--headless",
-                        "--checkpoint", "checkpoints/SpiderV2_1/spiderbot_base_v0.pt"
+                        // "--checkpoint", "checkpoints/SpiderV2_1/spiderbot_base_v0.pt"
                     ],
             "program": "${workspaceFolder}/scripts/skrlcustom/train.py",
             //"program": "${workspaceFolder}/scripts/rsl_rl/train.py",

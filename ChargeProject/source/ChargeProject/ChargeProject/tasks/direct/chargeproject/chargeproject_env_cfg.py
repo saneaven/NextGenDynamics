@@ -3,6 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from enum import IntEnum
 import math
 
 import numpy as np
@@ -15,6 +16,12 @@ from isaaclab.utils import configclass
 
 from gymnasium import spaces
 
+
+class RobotState(IntEnum):
+    WAYPOINT = 0    # Target point navigation
+    PATROL = 1      # Patrol mode
+    # Future states:
+    # INVESTIGATE = 2, LOOK = 3, ATTACK = 4, HIDE = 5
 
 @configclass
 class ChargeprojectEnvCfg(DirectRLEnvCfg):
@@ -32,10 +39,12 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     # observation_space = 376 # with height scanner
     observation_space = 722 # with height scanner and lidar
     
+    # observations: 131 = 120 (base) + 8 (far_staleness) + 1 (can_see) + 2 (one_hot_state)
     observation_space = spaces.Dict({
-        "observations": spaces.Box(-math.inf, math.inf, shape=(120,), dtype=np.float32),
+        "observations": spaces.Box(-math.inf, math.inf, shape=(131,), dtype=np.float32),
         "height_data": spaces.Box(-math.inf, math.inf, shape=(64, 64), dtype=np.float32),
-        "bev_data": spaces.Box(-math.inf, math.inf, shape=(3, 64, 64), dtype=np.float32)
+        "bev_data": spaces.Box(-math.inf, math.inf, shape=(3, 64, 64), dtype=np.float32),
+        "nav_data": spaces.Box(-math.inf, math.inf, shape=(1, 33, 33), dtype=np.float32)  # staleness only
     })
     state_space = 0 #idk why this is here
     # simulation
@@ -84,6 +93,20 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     height_map_size_y = terrain_generator.config.size[1]
     height_map_meter_per_grid = terrain_generator.config.meter_per_grid
 
+    # --- Game AI Settings ---
+    # Patrol settings
+    patrol_size = 18.0  # Meters (Area the robot is expected to patrol)
+    staleness_dim = 18  # Grid resolution for staleness map (patrol_size / staleness_res)
+    staleness_decay_rate = 1.0  # Rate at which areas become "stale" again
+
+    # Nav data settings (egocentric observation)
+    nav_size = 24.0  # Size of nav observation in meters
+    nav_dim = 33  # Grid resolution for nav observation (must match observation_space)
+
+    # Patrol reward scales
+    patrol_exploration_reward_scale = 2.0  # Reward for exploring new areas
+    patrol_boundary_penalty_scale = -0.25  # Penalty for leaving patrol zone
+
     spawn_padding = 20.0  # meters from edge of height map to spawn robots within
     target_sample_attempts = 24  # tries per env to sample a target that avoids obstacles
     target_obstacle_margin = 0.5  # extra meters to keep away from obstacle radius
@@ -105,30 +128,18 @@ class ChargeprojectEnvCfg(DirectRLEnvCfg):
     action_scale = 0.75
     
     progress_reward_scale = 5.0e3 # 500 # linear version ish
-    #progress_reward_scale = 50  * 5 * 5 # 1.5 version
     progress_pow = 1.3
     distance_lookback = 8
-    #progress_target_divisor = 7.5
     velocity_alignment_reward_scale = 2.5e2 # 10.0 #2 #6
     # Multiplied by targets hit reward
     reach_target_reward_scale = 1.0e5 # 1.0e4
-    # forward_vel_reward_scale = 0.0 #1.2#/30
     life_time_reward_scale = 0.005
-    # time_penalty_scale = 0.0 #-5
     death_penalty_scale = -5.0e5 # -1000.0 # -500.0
-    # still_penalty_scale = -2.0e-6
-    # still_threshold = 2.0
-    # motion_metric_pow = 10.0 # for still penalty
     speed_reward_scale = 2.5e2
-    #lin_vel_reward_scale = 1.5
-    #yaw_rate_reward_scale = 0.75
-    # z_vel_penalty_scale = -0.001
     jump_penalty_scale = -2.5e3
     feet_contact_penalty_scale = -1.0e-7
-    # ang_vel_reward_scale = -0.0375
     joint_torque_reward_scale = -0.25
     joint_accel_reward_scale = -2.5e-04 # idk this works # -1.5e-07
-    # dof_vel_reward_scale = 0
     action_rate_reward_scale = -0.5
     body_angular_velocity_penalty_scale = -15.0
     body_vertical_acceleration_penalty_scale = -3.0

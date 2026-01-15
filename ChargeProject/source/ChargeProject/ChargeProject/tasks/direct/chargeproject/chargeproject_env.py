@@ -2,10 +2,10 @@ from __future__ import annotations
 import math
 import colorsys
 from time import time
+from enum import IntEnum
 
 import gymnasium as gym
 import torch
-import torch.compiler
 from collections.abc import Sequence
 
 import isaaclab.sim as sim_utils
@@ -14,12 +14,13 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
-from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import build_bev, transform_world_to_ego, BEVDebugVisualizer
+from ChargeProject.tasks.direct.chargeproject.utils.cloudpoint_to_bev import BEVDebugVisualizer  # debug only
 from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.custom_terrain_generator import terrain_generator
 from ChargeProject.tasks.direct.chargeproject.environment.terrain_gen.mesh_loader import get_obstacle_radius
+from ChargeProject.tasks.direct.chargeproject.environment.map_manager import MapManager, MapManagerOutput
 from .environment.spider_robot import SPIDER_ACTUATOR_CFG
 
-from .chargeproject_env_cfg import ChargeprojectEnvCfg
+from .chargeproject_env_cfg import ChargeprojectEnvCfg, RobotState
 
 from isaaclab.markers.visualization_markers import VisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -90,9 +91,22 @@ class ChargeprojectEnv(DirectRLEnv):
         # Change to initialize with nulls
         self._distance_buffer = torch.zeros(self.num_envs, self.cfg.distance_lookback, device=self.device)
 
-        # Add height map data
-        self._terrain_height_map = torch.from_numpy(terrain_generator.height_map).to(dtype=torch.float32, device=self.device)
+        # Spawn points (terrain_height_map is now managed by MapManager)
         self._spawn_points = torch.from_numpy(terrain_generator.spawn_points).to(dtype=torch.float32, device=self.device)
+
+        # --- Game AI State Machine ---
+        self.robot_state = torch.full((self.num_envs,), RobotState.PATROL, dtype=torch.int64, device=self.device)
+
+        # --- MapManager for patrol/exploration ---
+        self.map_manager = MapManager(
+            config=self.cfg,
+            num_envs=self.num_envs,
+            device=self.device,
+            height_scanner=self._height_scanner,
+            lidar_sensor=self._lidar_sensor
+        )
+        self.last_exploration_bonus = torch.zeros(self.num_envs, device=self.device)
+        self.far_staleness = torch.zeros(self.num_envs, 8, device=self.device)
 
         # Load obstacle circles for collision checking (x, y, radius)
         if terrain_generator.obstacle_placement is not None:
@@ -119,7 +133,7 @@ class ChargeprojectEnv(DirectRLEnv):
         log_dir = self.cfg.log_dir
         os.makedirs(log_dir, exist_ok=True)
 
-        # self._bev_debug_visualizer = BEVDebugVisualizer()
+        self._bev_debug_visualizer = BEVDebugVisualizer()
 
         self.extras["log"] = dict()
 
@@ -217,64 +231,6 @@ class ChargeprojectEnv(DirectRLEnv):
 
         return unit_vector_b, distance
     
-    #@torch.compile(mode="reduce-overhead")
-    # def _get_observations_impl(self, height_scanner_data) -> dict:
-    #     height_data = (
-    #         height_scanner_data.pos_w[:, 2].unsqueeze(1) - height_scanner_data.ray_hits_w[..., 2] - 0.5
-    #     ).clip(-1.0, 1.0)
-
-    #     target_unit_vector, target_distance = self._get_relative_target_info(
-    #         self._desired_pos
-    #     )
-
-    #     next_target_unit_vector, next_target_distance = self._get_relative_target_info(
-    #         self._next_desired_pos
-    #     )
-
-    #     lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
-
-    #     self._target_distance = target_distance.squeeze(-1)
-
-    #     height_data = (
-    #         self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
-    #     ).clip(-1.0, 1.0)
-
-    #     net_contact_forces = self._contact_sensor.data.net_forces_w_history
-    #     self.is_contact = (
-    #         torch.max(
-    #             torch.norm(
-    #                 net_contact_forces, dim=-1
-    #             ),
-    #             dim=1,
-    #         )[0]
-    #         > 1.0
-    #     )
-        
-    #     # Concatenate the selected observations into a single tensor.
-    #     obs = torch.cat(
-    #         [
-    #             tensor
-    #             for tensor in (
-    #                 self._robot.data.root_lin_vel_b,
-    #                 self._robot.data.root_ang_vel_b,
-    #                 self._robot.data.projected_gravity_b,
-    #                 target_unit_vector,
-    #                 target_distance,
-    #                 lidar_data,
-    #                 next_target_unit_vector,
-    #                 next_target_distance,
-    #                 self.is_contact,
-    #                 # self._commands,
-    #                 self._robot.data.joint_pos[:, self.dof_idx] - self._robot.data.default_joint_pos[:, self.dof_idx],
-    #                 self._robot.data.joint_vel[:, self.dof_idx],
-    #                 height_data,
-    #                 self._actions,
-    #             )
-    #             if tensor is not None
-    #         ],
-    #         dim=-1,
-    #     )
-    #     return obs
 
     def _get_observations_impl(self) -> dict:
 
@@ -299,27 +255,23 @@ class ChargeprojectEnv(DirectRLEnv):
 
         self._target_distance = target_distance.squeeze(-1)
 
-        height_data = (
-            self._height_scanner.data.pos_w[:, 2].unsqueeze(1) - self._height_scanner.data.ray_hits_w[..., 2] - 0.5
-        ).clip(-1.0, 1.0)
-        height_data = height_data.view(self.num_envs, 64, 64)
-
-        world_points = self._lidar_sensor.data.ray_hits_w  # (batch_size, num_points, 3)
-        sensor_position_world = self._lidar_sensor.data.pos_w  # (batch_size, 3)
-        sensor_quaternion_world_wxyz = self._lidar_sensor.data.quat_w  # (batch_size, 4) [w,x,y,z]
-
-        ego_points = transform_world_to_ego(world_points, sensor_position_world, sensor_quaternion_world_wxyz)
-
-        bev_data = build_bev(
-            ego_points,
-            channels=("max_height", "mean_height", "density"),
+        # --- MapManager update: get all map data in one call ---
+        map_output = self.map_manager.update(
+            env_origins=self.scene.env_origins,
+            robot_pos_w=self._robot.data.root_pos_w,
+            robot_yaw_w=self._robot.data.heading_w.unsqueeze(-1),
+            dt=self.step_dt
         )
-        # lidar_data = (self._lidar_sensor.data.pos_w.unsqueeze(1) - self._lidar_sensor.data.ray_hits_w).clip(-1., 10.).flatten(start_dim=1)
-        # lidar_data = lidar_data.view(self.num_envs, 128, 32, 3)
+        self.last_exploration_bonus = map_output.exploration_bonus
+        self.far_staleness = map_output.far_staleness
 
-        #################### DEBUG VISUALIZATION ####################
-        # self._bev_debug_visualizer.update(bev_data.cpu(), ego_points.cpu())
-        ###############################################################
+        # can_see: hardcoded to False for now (player not implemented yet)
+        can_see = torch.zeros(self.num_envs, 1, device=self.device)
+
+        # one_hot_state: WAYPOINT=0, PATROL=1
+        one_hot_state = torch.nn.functional.one_hot(
+            self.robot_state, num_classes=2
+        ).float()
 
         # Concatenate the selected observations into a single tensor.
         obs = torch.cat(
@@ -338,6 +290,10 @@ class ChargeprojectEnv(DirectRLEnv):
                     self._robot.data.joint_pos[:, self.dof_idx] - self._robot.data.default_joint_pos[:, self.dof_idx],
                     self._robot.data.joint_vel[:, self.dof_idx],
                     self._actions,
+                    # --- New observations for Game AI ---
+                    map_output.far_staleness,    # (num_envs, 8)
+                    can_see,          # (num_envs, 1)
+                    one_hot_state,    # (num_envs, 2)
                 )
                 if tensor is not None
             ],
@@ -345,8 +301,9 @@ class ChargeprojectEnv(DirectRLEnv):
         )
         return {
             "observations": obs,
-            "height_data": height_data,
-            "bev_data": bev_data
+            "height_data": map_output.height_data,
+            "bev_data": map_output.bev_data,
+            "nav_data": map_output.nav_data.squeeze(1)  # (num_envs, 1, 33, 33) -> (num_envs, 33, 33)
         }
     
     def _get_observations(self) -> dict:
@@ -545,6 +502,17 @@ class ChargeprojectEnv(DirectRLEnv):
         # angle_from_vertical_rad = torch.acos(torch.clamp(cos_angle, -1.0, 1.0))
         # lower_leg_penalty = torch.mean(angle_from_vertical_rad, dim=1)
 
+        # --- Patrol Rewards ---
+        patrol_mask = (self.robot_state == RobotState.PATROL).float()
+
+        # Exploration reward (cleared staleness)
+        patrol_exploration = patrol_mask * self.last_exploration_bonus
+
+        # Boundary penalty (distance outside patrol zone)
+        rel_pos = self._robot.data.root_pos_w[:, :2] - self.scene.env_origins[:, :2]
+        dist_from_center = torch.norm(rel_pos, dim=1)
+        outside_patrol = torch.clamp(dist_from_center - (self.cfg.patrol_size / 2), min=0.0)
+        patrol_boundary = patrol_mask * outside_patrol
 
         return {
             # "track_lin_vel_xy_exp": lin_vel_error_mapped * self.cfg.lin_vel_reward_scale * self.step_dt,
@@ -576,6 +544,9 @@ class ChargeprojectEnv(DirectRLEnv):
             #"feet_height_penalty": feet_height_penalty * self.cfg.feet_height_penalty_scale * self.step_dt,
             #"lower_leg_penalty": lower_leg_penalty * self.cfg.lower_leg_penalty_scale * self.step_dt,
             "wall_proximity_penalty": wall_proximity_score * self.cfg.wall_proximity_penalty_scale * self.step_dt,
+            # --- Patrol Rewards ---
+            "patrol_exploration": patrol_exploration * self.cfg.patrol_exploration_reward_scale * self.step_dt,
+            "patrol_boundary": patrol_boundary * self.cfg.patrol_boundary_penalty_scale * self.step_dt,
         } # type: ignore
 
 
@@ -678,6 +649,11 @@ class ChargeprojectEnv(DirectRLEnv):
         self._time_outs[env_ids] = self.cfg.time_out_per_target
         self._life_time[env_ids] = 0.0
         self._targets_reached[env_ids] = 0
+
+        # Reset Game AI state
+        self.robot_state[env_ids] = RobotState.PATROL
+        self.map_manager.reset(env_ids)
+        self.last_exploration_bonus[env_ids] = 0.0
 
         if self.scene.terrain is None:
             print("Terrain not found, cannot sample spawn positions.")
@@ -926,52 +902,17 @@ class ChargeprojectEnv(DirectRLEnv):
         )
 
     def _get_terrain_height(self, positions_xy: torch.Tensor) -> torch.Tensor:
+        """Delegate to MapManager for terrain height lookup."""
         if self.scene.terrain is None:
             raise RuntimeError("Terrain not found, cannot get height information.")
-        
-        meter_per_grid: float = self.cfg.height_map_meter_per_grid
-
-        # use bilinear interpolation to get height at given (x, y) positions from terrain_height_map
-        terrain_height_map = self._terrain_height_map
-
-        # Convert world coordinates (centered around 0,0) to grid coordinates (0..N)
-        # World X → column index, World Y → row index
-        grid_pos = positions_xy / meter_per_grid
-        num_rows, num_cols = terrain_height_map.shape
-        grid_pos[:, 0] += num_cols / 2  # X → column offset
-        grid_pos[:, 1] += num_rows / 2  # Y → row offset
-
-        # Get integer coordinates
-        col0 = torch.floor(grid_pos[:, 0]).long()  # X → column
-        row0 = torch.floor(grid_pos[:, 1]).long()  # Y → row
-        col1 = col0 + 1
-        row1 = row0 + 1
-
-        # Clamp coordinates to map bounds
-        col0 = torch.clamp(col0, 0, num_cols - 1)
-        col1 = torch.clamp(col1, 0, num_cols - 1)
-        row0 = torch.clamp(row0, 0, num_rows - 1)
-        row1 = torch.clamp(row1, 0, num_rows - 1)
-
-        # Get heights at grid points (terrain_height_map[row, col])
-        h00 = terrain_height_map[row0, col0]
-        h10 = terrain_height_map[row0, col1]  # same row, different col (X varies)
-        h01 = terrain_height_map[row1, col0]  # different row, same col (Y varies)
-        h11 = terrain_height_map[row1, col1]
-
-        # Calculate weights
-        wx = grid_pos[:, 0] - col0.float()  # X direction weight (column)
-        wy = grid_pos[:, 1] - row0.float()  # Y direction weight (row)
-
-        # Bilinear interpolation
-        # Interpolate along X (column direction)
-        hx0 = h00 * (1 - wx) + h10 * wx  # At row0, blend col0↔col1
-        hx1 = h01 * (1 - wx) + h11 * wx  # At row1, blend col0↔col1
-
-        # Interpolate along Y (row direction)
-        height = hx0 * (1 - wy) + hx1 * wy
-
-        return height
+        return self.map_manager.get_terrain_height(positions_xy)
+    
+    def switch_mode(self, env_ids, new_state: RobotState):
+        self.robot_state[env_ids] = new_state
+        if new_state == RobotState.WAYPOINT:
+            self._move_next_targets(env_ids) # set new target
+        elif new_state == RobotState.PATROL:
+            self.map_manager.reset(env_ids) # reset exploration map
 
 
 
