@@ -31,6 +31,9 @@ This repository contains the `SpiderBotAIProject` Isaac Lab extension and task i
     python scripts/skrlcustom/train.py --task=SpiderBotAIProject-v0
     ```
 
+- Note: On first run, the script generates `custom_terrain.usd` under `source/SpiderBotAIProject/SpiderBotAIProject/assets/terrains/`.
+  This requires `opensimplex==0.4.5.1` in your Isaac Sim python environment.
+
 - Play (skrlcustom-only):
 
     ```bash

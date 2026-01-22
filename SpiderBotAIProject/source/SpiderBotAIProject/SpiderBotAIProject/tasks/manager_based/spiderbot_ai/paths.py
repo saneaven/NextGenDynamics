@@ -16,7 +16,7 @@ def package_root() -> Path:
 
 
 ASSETS_DIR = package_root() / "assets"
-ROBOTS_DIR = ASSETS_DIR / "robots"
+ROBOTS_DIR = ASSETS_DIR / "spider"
 TERRAINS_DIR = ASSETS_DIR / "terrains"
 
 

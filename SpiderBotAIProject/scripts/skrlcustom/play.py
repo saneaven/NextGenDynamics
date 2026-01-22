@@ -141,6 +141,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
 
     # create isaac environment
     env_cfg.log_dir = log_dir
+    from SpiderBotAIProject.tasks.manager_based.spiderbot_ai.terrain_gen_usd import ensure_custom_terrain_usd
+
+    ensure_custom_terrain_usd(
+        size_x=float(env_cfg.height_map_size_x),
+        size_y=float(env_cfg.height_map_size_y),
+        meter_per_grid=float(env_cfg.height_map_meter_per_grid),
+        seed=int(env_cfg.seed or 42),
+    )
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm

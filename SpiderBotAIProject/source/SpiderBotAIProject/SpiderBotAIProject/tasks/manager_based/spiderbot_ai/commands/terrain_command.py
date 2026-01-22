@@ -6,13 +6,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
+import numpy as np
 import torch
+from pxr import Usd, UsdGeom
 
 from isaaclab.managers import CommandTerm
 from isaaclab.managers import CommandTermCfg
 
-from ..terrain_gen.custom_terrain_generator import CustomTerrainCfg, CustomTerrainGenerator
+from ..terrain_gen_usd.custom_terrain_config import CustomTerrainCfg
+from ..terrain_gen_usd.spawnpoint_sampler import spawn_point_sampler
 from ..terrain_gen.heightmap_utils import sample_height_torch
 
 
@@ -28,13 +32,27 @@ class TerrainCommandTerm(CommandTerm):
             meter_per_grid=float(self._env.cfg.height_map_meter_per_grid),
             seed=seed,
         )
-        generator = CustomTerrainGenerator(terrain_cfg)
-        generator.initialize()
+        usd_path = Path(terrain_cfg.usd_path)
+        if not usd_path.exists():
+            raise FileNotFoundError(
+                f"Missing terrain USD: {usd_path}. "
+                "Run `scripts/skrlcustom/train.py` or `scripts/skrlcustom/play.py` once to generate it."
+            )
 
-        assert generator.height_map is not None
-        assert generator.spawn_points is not None
+        stage = Usd.Stage.Open(str(usd_path))
+        mesh = UsdGeom.Mesh.Get(stage, "/World/terrain")
+        if mesh is None or not mesh.GetPrim().IsValid():
+            raise RuntimeError(f"Terrain USD is missing prim '/World/terrain': {usd_path}")
 
-        height_map_np = generator.height_map
+        points = mesh.GetPointsAttr().Get()
+        points_np = np.asarray(points, dtype=np.float32)
+        rows, cols = terrain_cfg.grid_size
+        if points_np.shape[0] != rows * cols:
+            raise RuntimeError(
+                f"Terrain mesh points count mismatch. Expected {rows * cols}, got {points_np.shape[0]} ({usd_path})."
+            )
+
+        height_map_np = points_np[:, 2].reshape(rows, cols)
         self.height_map = torch.from_numpy(height_map_np).to(device=self.device, dtype=torch.float32)
 
         self.meter_per_grid = float(terrain_cfg.meter_per_grid)
@@ -42,22 +60,19 @@ class TerrainCommandTerm(CommandTerm):
         self.size_y = float(terrain_cfg.size[1])
         self.origin_xy = torch.tensor([0.0, 0.0], device=self.device)
 
-        self.spawn_points = torch.from_numpy(generator.spawn_points).to(device=self.device, dtype=torch.float32)
+        spawn_points_np = None
+        spawn_prim = UsdGeom.Points.Get(stage, "/World/debug/spawn_points")
+        if spawn_prim is not None and spawn_prim.GetPrim().IsValid():
+            spawn_points = spawn_prim.GetPointsAttr().Get()
+            spawn_points_np = np.asarray(spawn_points, dtype=np.float32)
+
+        if spawn_points_np is None or spawn_points_np.size == 0:
+            spawn_points_np = spawn_point_sampler(height_map_np, obstacle_placement=None, cfg=terrain_cfg)
+
+        self.spawn_points = torch.from_numpy(spawn_points_np).to(device=self.device, dtype=torch.float32)
 
         self.obstacle_circles = torch.zeros(0, 3, device=self.device, dtype=torch.float32)
-        if generator.obstacle_placement:
-            circles = []
-            for data in generator.obstacle_placement.values():
-                positions = data.get("positions")
-                scales = data.get("scales")
-                if positions is None or scales is None:
-                    continue
-                # Conservative radius approximation from XY scale.
-                radii = 0.5 * torch.from_numpy(scales[:, :2].max(axis=1)).to(device=self.device, dtype=torch.float32)
-                pos = torch.from_numpy(positions[:, :2]).to(device=self.device, dtype=torch.float32)
-                circles.append(torch.cat([pos, radii.unsqueeze(1)], dim=1))
-            if circles:
-                self.obstacle_circles = torch.cat(circles, dim=0)
+        # Obstacles are optional; if enabled, extend this term to parse obstacle prims from the USD.
 
     @property
     def command(self) -> torch.Tensor:

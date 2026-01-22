@@ -1,0 +1,68 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from ..paths import CUSTOM_TERRAIN_USD_PATH
+
+
+class ObstacleType:
+    CUSTOM_MESH = "custom_mesh"
+    CUBE = "cube"
+    SPHERE = "sphere"
+
+
+@dataclass
+class Obstacle:
+    type: str
+    path: None | str = None
+    scale_range: tuple[float, float] = (0.5, 2.0)
+    num_instances: int = 100
+    radius: float | None = None
+
+
+@dataclass
+class CustomTerrainCfg:
+    """Configuration for custom terrain generation.
+
+    This generator is responsible for creating the *actual* terrain USD that the environment loads.
+    """
+
+    # Terrain size in meters (x, y).
+    size: tuple[float, float] = (196.0, 196.0)
+    # Grid resolution in meters.
+    meter_per_grid: float = 0.15
+    # Output USD path.
+    usd_path: Path = CUSTOM_TERRAIN_USD_PATH
+    # Random seed.
+    seed: int = 42
+
+    # Height-map synthesis parameters.
+    roughness: float = 0.05
+    hill_scale: float = 768.0
+    hill_height: float = 8.0
+    hill_noise_lacunarity: float = 2.5
+    hill_noise_persistence: float = 0.5
+    hill_noise_octaves: int = 32
+
+    # Obstacles (optional).
+    obstacles: tuple[Obstacle, ...] | None = None
+
+    # Spawn sampling.
+    num_points: int = 1024
+    sample_radius: float = 0.5
+    flatness_threshold: float = 0.5
+    max_attempts: int = 1024
+    margin: float = 32.0
+
+    def __post_init__(self):
+        self.grid_size = (
+            int(self.size[1] / self.meter_per_grid),
+            int(self.size[0] / self.meter_per_grid),
+        )
+
