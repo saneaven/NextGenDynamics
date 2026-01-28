@@ -56,22 +56,39 @@ class WaypointCommandTerm(CommandTerm):
             return
         self._last_update_step = step
 
+        # Pull-based mode transition signals.
+        mode_term = self._env.command_manager.get_term("mode")
+        mode_term.ensure_updated()
+        is_waypoint = mode_term.is_waypoint
+
+        # When entering waypoint mode, reset per-target timeout bookkeeping so patrol time doesn't count.
+        entered_waypoint = mode_term.entered_waypoint
+        if torch.any(entered_waypoint):
+            entered_ids = entered_waypoint.nonzero(as_tuple=False).squeeze(-1)
+            self.time_since_target[entered_ids] = 0.0
+            self.reached_target[entered_ids] = False
+            self.per_target_timed_out[entered_ids] = False
+            self._distance_buffer[entered_ids] = torch.nan
+
         self._step_counter += 1
-        self.time_since_target += self._env.step_dt
+        dt = float(self._env.step_dt)
+        self.time_since_target += dt * is_waypoint.to(dtype=self.time_since_target.dtype)
 
         # Determine whether the target has been reached.
         target_distance = torch.linalg.norm(self.desired_pos - self.robot.data.root_pos_w, dim=1)
-        self.reached_target = target_distance < float(self._env.cfg.success_tolerance)
+        self.reached_target = (target_distance < float(self._env.cfg.success_tolerance)) & is_waypoint
 
         reached_ids = self.reached_target.nonzero(as_tuple=False).squeeze(-1)
         if reached_ids.numel() > 0:
             self._on_reached_target(reached_ids)
 
         # Timeouts (per-target).
-        self.per_target_timed_out = self.time_since_target > self.time_outs
+        self.per_target_timed_out = (self.time_since_target > self.time_outs) & is_waypoint
 
         # Update progress buffer (lookback distance).
-        self._write_distance_buffer()
+        active_ids = is_waypoint.nonzero(as_tuple=False).squeeze(-1)
+        if active_ids.numel() > 0:
+            self._write_distance_buffer(active_ids, target_distance)
 
     def reset(self, env_ids: Sequence[int] | None = None):
         if env_ids is None:
@@ -141,10 +158,10 @@ class WaypointCommandTerm(CommandTerm):
     def get_distance_buffer(self) -> torch.Tensor:
         return self._distance_buffer
 
-    def _write_distance_buffer(self):
+    def _write_distance_buffer(self, env_ids: torch.Tensor, target_distance: torch.Tensor):
+        """Write target distance into the cyclic lookback buffer for a subset of environments."""
         index = self._step_counter % int(self._env.cfg.distance_lookback)
-        target_distance = torch.linalg.norm(self.desired_pos - self.robot.data.root_pos_w, dim=1)
-        self._distance_buffer[:, index] = target_distance
+        self._distance_buffer[env_ids, index] = target_distance[env_ids]
 
     def _on_reached_target(self, env_ids: torch.Tensor):
         self.targets_reached[env_ids] += 1.0

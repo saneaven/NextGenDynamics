@@ -136,28 +136,30 @@ class ObservationsCfg:
 class RewardsCfg:
     """Reward terms (thin wrappers over command-owned buffers)."""
 
-    life_time = RewTerm(func=mdp.life_time_reward, weight=1.0)
-    progress = RewTerm(func=mdp.progress_reward, weight=1.0)
-    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=1.0)
-    reach_target = RewTerm(func=mdp.reach_target_reward, weight=1.0)
+    # NOTE: We keep rewards unscaled in mdp functions and apply scaling here via manager weights.
+    #       This keeps the RewardManager table meaningful and avoids hiding scales inside env.cfg.* fields.
+    life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
+    progress = RewTerm(func=mdp.progress_reward, weight=5.0e3)
+    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=2.5e2)
+    reach_target = RewTerm(func=mdp.reach_target_reward, weight=1.0e5)
 
-    death_penalty = RewTerm(func=mdp.death_penalty, weight=1.0)
-    feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=1.0)
-    jump_penalty = RewTerm(func=mdp.jump_penalty, weight=1.0)
-    body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=1.0)
-    speed = RewTerm(func=mdp.speed_reward, weight=1.0)
-    body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=1.0)
-    dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=1.0)
-    dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=1.0)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=1.0)
-    feet_air_time = RewTerm(func=mdp.feet_air_time_reward, weight=1.0)
-    undesired_contacts = RewTerm(func=mdp.undesired_contacts_penalty, weight=1.0)
-    feet_contact_force = RewTerm(func=mdp.feet_contact_force_penalty, weight=1.0)
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=1.0)
-    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=1.0)
+    death_penalty = RewTerm(func=mdp.death_penalty, weight=-5.0e5)
+    feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=-5.0e1)
+    jump_penalty = RewTerm(func=mdp.jump_penalty, weight=-2.5e3)
+    body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=-15.0)
+    speed = RewTerm(func=mdp.speed_reward, weight=2.5e2)
+    body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=-3.0)
+    dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=-0.25)
+    dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=-2.5e-4)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.5)
+    feet_air_time = RewTerm(func=mdp.feet_air_time_reward, weight=5.0e2)
+    undesired_contacts = RewTerm(func=mdp.undesired_contacts_penalty, weight=-2.0e2)
+    feet_contact_force = RewTerm(func=mdp.feet_contact_force_penalty, weight=-1.0e-7)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0e3)
+    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=0.0)
 
-    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=1.0)
-    patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=1.0)
+    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=2.0)
+    patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=-0.25)
 
 
 @configclass
@@ -231,31 +233,10 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     time_out_decrease_per_target = 0.075
     min_time_out = 1.0
 
-    # Reward scales (match direct defaults)
-    progress_reward_scale = 5.0e3
+    # Reward shaping parameters (scales live in RewardsCfg weights).
     progress_pow = 1.3
-    velocity_alignment_reward_scale = 2.5e2
-    reach_target_reward_scale = 1.0e5
-    life_time_reward_scale = 0.005
-    death_penalty_scale = -5.0e5
-    speed_reward_scale = 2.5e2
-    jump_penalty_scale = -2.5e3
-    feet_contact_penalty_scale = -1.0e-7
-    joint_torque_reward_scale = -0.25
-    joint_accel_reward_scale = -2.5e-4
-    action_rate_reward_scale = -0.5
-    body_angular_velocity_penalty_scale = -15.0
-    body_vertical_acceleration_penalty_scale = -3.0
-    feet_air_time_reward_scale = 5.0e2
-    feet_ground_time_penalty_scale = -5.0e1
-    undesired_contact_reward_scale = -2.0e2
-    flat_orientation_reward_scale = -2.0e3
-    wall_proximity_penalty_scale = 0.0
     wall_close_threshold = 1.5
     wall_height_threshold = -0.2
-
-    patrol_exploration_reward_scale = 2.0
-    patrol_boundary_penalty_scale = -0.25
 
     # Sensors / contacts
     contact_threshold = 1.0e-2

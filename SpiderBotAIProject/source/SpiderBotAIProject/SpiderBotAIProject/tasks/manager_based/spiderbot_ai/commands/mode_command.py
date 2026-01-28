@@ -27,13 +27,30 @@ class ModeCommandTerm(CommandTerm):
     def __init__(self, cfg: CommandTermCfg, env):
         super().__init__(cfg, env)
 
-        self.robot_mode = torch.full((self.num_envs,), self.PATROL, dtype=torch.int64, device=self.device)
+        # Desired/assigned mode (can be set by other terms/systems).
+        self.robot_mode = torch.full((self.num_envs,), self.WAYPOINT, dtype=torch.int64, device=self.device)
+
+        # Cached mode state for pull-based "events" (updated once per sim step).
+        self.current_mode = self.robot_mode.clone()
+        self.prev_mode = self.robot_mode.clone()
+        self.mode_changed = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+        self.entered_waypoint = torch.zeros_like(self.mode_changed)
+        self.exited_waypoint = torch.zeros_like(self.mode_changed)
+
         self._one_hot = torch.zeros(self.num_envs, 2, device=self.device, dtype=torch.float32)
         self._last_update_step = -1
 
     @property
     def command(self) -> torch.Tensor:
         return self._one_hot
+
+    @property
+    def is_waypoint(self) -> torch.Tensor:
+        return self.current_mode == self.WAYPOINT
+
+    @property
+    def is_patrol(self) -> torch.Tensor:
+        return self.current_mode == self.PATROL
 
     def ensure_updated(self) -> None:
         """Updates cached one-hot mode once per environment step."""
@@ -42,15 +59,28 @@ class ModeCommandTerm(CommandTerm):
             return
         self._last_update_step = step
 
-        idx = torch.clamp(self.robot_mode, min=0, max=1).to(dtype=torch.int64).unsqueeze(1)
+        # Cache transition state (pull-based "events").
+        self.prev_mode.copy_(self.current_mode)
+        self.current_mode.copy_(torch.clamp(self.robot_mode, min=0, max=1).to(dtype=torch.int64))
+
+        self.mode_changed[:] = self.current_mode != self.prev_mode
+        self.entered_waypoint[:] = self.mode_changed & (self.current_mode == self.WAYPOINT)
+        self.exited_waypoint[:] = self.mode_changed & (self.current_mode == self.PATROL)
+
+        idx = self.current_mode.unsqueeze(1)
         self._one_hot.zero_()
         self._one_hot.scatter_(1, idx, 1.0)
 
     def reset(self, env_ids: Sequence[int] | None = None):
         if env_ids is None:
             env_ids = slice(None)
-        self.robot_mode[env_ids] = self.PATROL
-        self._one_hot[env_ids] = torch.tensor([0.0, 1.0], device=self.device, dtype=torch.float32)
+        self.robot_mode[env_ids] = self.WAYPOINT
+        self.current_mode[env_ids] = self.WAYPOINT
+        self.prev_mode[env_ids] = self.WAYPOINT
+        self.mode_changed[env_ids] = False
+        self.entered_waypoint[env_ids] = False
+        self.exited_waypoint[env_ids] = False
+        self._one_hot[env_ids] = torch.tensor([1.0, 0.0], device=self.device, dtype=torch.float32)
         return super().reset(env_ids=env_ids)
 
     def _update_metrics(self):
