@@ -46,6 +46,16 @@ This repository contains the `SpiderBotAIProject` Isaac Lab extension and task i
     python scripts/skrlcustom/play.py --task=SpiderBotAIProject-v0 --debug_vis
     ```
 
+## Docker (headless training)
+
+This repo includes a headless Docker setup that runs training inside the pre-built Isaac Lab container and maps the
+container user to your host UID/GID to avoid `root:root` artifacts on the bind-mounted workspace.
+
+```bash
+# From repo root
+UID=$(id -u) GID=$(id -g) docker compose run --rm train
+```
+
 ### Set up IDE (Optional)
 
 To setup the IDE, please follow these instructions:
