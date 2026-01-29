@@ -8,6 +8,7 @@ services:
       dockerfile: docker/Dockerfile
       args:
         ISAAC_LAB_VERSION: "${ISAAC_LAB_VERSION:-2.3.1}"
+      network: host
     image: spiderbot-ai:${IMAGE_TAG:-latest}
     container_name: spiderbot-ai
 
@@ -19,6 +20,8 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    
+    gpus: all
 
     # Network configuration for headless operation
     network_mode: host
