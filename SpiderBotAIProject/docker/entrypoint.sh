@@ -43,6 +43,9 @@ ensure_writable_dir() {
 }
 
 ensure_writable_dir "/isaac-sim/kit/cache"
+ensure_writable_dir "/isaac-sim/kit/data"
+ensure_writable_dir "${HOME}/.cache"
+ensure_writable_dir "${HOME}/.cache/warp"
 ensure_writable_dir "${HOME}/.cache/ov"
 ensure_writable_dir "${HOME}/.cache/pip"
 ensure_writable_dir "${HOME}/.cache/nvidia/GLCache"
