@@ -24,10 +24,10 @@ WORKDIR /workspace/spiderbot
 COPY . /workspace/spiderbot/
 
 # Install the SpiderBotAIProject extension in editable mode
-RUN python -m pip install --no-cache-dir -e /workspace/spiderbot/source/SpiderBotAIProject
+RUN /isaac-sim/python.sh -m pip install --no-cache-dir -e /workspace/spiderbot/source/SpiderBotAIProject
 
 # Install additional dependencies if needed
-RUN python -m pip install --no-cache-dir \
+RUN /isaac-sim/python.sh -m pip install --no-cache-dir \
     psutil \
     "skrl>=1.4.3"
 
@@ -41,9 +41,6 @@ RUN mkdir -p /workspace/spiderbot/logs \
 ENV SPIDERBOT_LOG_DIR=/workspace/spiderbot/logs
 ENV SPIDERBOT_OUTPUT_DIR=/workspace/spiderbot/outputs
 ENV SPIDERBOT_CHECKPOINT_DIR=/workspace/spiderbot/checkpoints
-
-# Default entrypoint allows running any command
-ENTRYPOINT ["/bin/bash", "-c"]
 
 # Default command shows help
 CMD ["echo 'SpiderBotAIProject Container Ready. Use: train.py, play.py, or /bin/bash'"]

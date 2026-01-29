@@ -66,7 +66,7 @@ services:
       service: spiderbot
     container_name: spiderbot-train
     command: >
-      python scripts/skrlcustom/train.py
+      /isaac-sim/python.sh scripts/skrlcustom/train.py
       --task=SpiderBotAIProject-v0
       --headless
       --num_envs=${NUM_ENVS:-512}
@@ -77,7 +77,7 @@ services:
       service: spiderbot
     container_name: spiderbot-play
     command: >
-      python scripts/skrlcustom/play.py
+      /isaac-sim/python.sh scripts/skrlcustom/play.py
       --task=SpiderBotAIProject-v0
       --headless
       --checkpoint=${CHECKPOINT_PATH:-/workspace/spiderbot/checkpoints/latest.pt}
