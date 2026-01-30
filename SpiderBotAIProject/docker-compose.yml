@@ -41,7 +41,8 @@ services:
       - isaac-documents:/home/${LOCAL_USER:-isaac}/Documents:rw
 
     command: >
-      bash -lc "if [ -x /workspace/IsaacLab/isaaclab.sh ]; then /workspace/IsaacLab/isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task=SpiderBotAIProject-v0 --headless; else /workspace/isaaclab/isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task=SpiderBotAIProject-v0 --headless; fi"
+      /workspace/isaaclab/isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task=SpiderBotAIProject-v0 --headless
+
 
 volumes:
   isaac-cache-kit: {}
