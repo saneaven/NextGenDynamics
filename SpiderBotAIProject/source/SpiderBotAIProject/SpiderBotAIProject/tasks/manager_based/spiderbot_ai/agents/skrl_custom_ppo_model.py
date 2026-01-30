@@ -15,13 +15,41 @@ from skrl.utils.spaces.torch import unflatten_tensorized_space
 
 
 def _unwrap_policy_observation_space(observation_space):
-    """Handle manager-based observation spaces with a top-level 'policy' group."""
-    if hasattr(observation_space, "spaces") and isinstance(getattr(observation_space, "spaces"), dict):
-        if "policy" in observation_space.spaces:
-            return observation_space.spaces["policy"]
-    if isinstance(observation_space, Mapping) and "policy" in observation_space:
-        return observation_space["policy"]
-    return observation_space
+    """Unwrap nested Dict observation spaces down to the policy input terms.
+
+    Isaac Lab manager-based environments commonly return nested Dict spaces (e.g. top-level "policy").
+    We need to reach the Dict that contains the actual term keys expected by the model (e.g. "observations").
+    """
+    current = observation_space
+
+    for _ in range(8):  # avoid infinite loops on unexpected/recursive structures
+        spaces = None
+
+        if hasattr(current, "spaces") and isinstance(getattr(current, "spaces"), Mapping):
+            spaces = current.spaces
+        elif isinstance(current, Mapping):
+            spaces = current
+
+        if not isinstance(spaces, Mapping) or not spaces:
+            break
+
+        # Stop once we reach the Dict that contains the expected term keys.
+        if "observations" in spaces:
+            break
+
+        # Prefer the common Isaac Lab convention.
+        if "policy" in spaces:
+            current = spaces["policy"]
+            continue
+
+        # Fallback: unwrap single-key wrappers (e.g. {"states": {...}}).
+        if len(spaces) == 1:
+            current = next(iter(spaces.values()))
+            continue
+
+        break
+
+    return current
 
 
 class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
