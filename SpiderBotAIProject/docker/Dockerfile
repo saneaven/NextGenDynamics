@@ -5,7 +5,7 @@ WORKDIR /workspace/SpiderBotAIProject
 COPY . /workspace/SpiderBotAIProject
 
 RUN bash -lc " \
-    cd /workspace/IsaacLab && \
+    cd /workspace/isaaclab && \
     ./isaaclab.sh -p -m pip install --upgrade pip && \
     ./isaaclab.sh -p -m pip install --upgrade opensimplex && \
     ./isaaclab.sh -p -m pip install 'skrl>=1.4.3' && \

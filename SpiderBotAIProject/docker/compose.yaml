@@ -20,4 +20,4 @@ services:
       - ../logs:/workspace/SpiderBotAIProject/logs:rw
       - ../outputs:/workspace/SpiderBotAIProject/outputs:rw
     command: >-
-      bash -lc "cd /workspace/IsaacLab && ./isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task SpiderBotAIProject-v0 --headless"
+      bash -lc "cd /workspace/isaaclab && ./isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task SpiderBotAIProject-v0 --headless"
