@@ -7,9 +7,13 @@ services:
     image: spiderbotai-isaaclab-headless:2.3.2
     gpus: all
     network_mode: host
+    entrypoint: ["/workspace/isaaclab/isaaclab.sh"]
+    working_dir: /workspace/SpiderBotAIProject
     environment:
       - ACCEPT_EULA=Y
       - PRIVACY_CONSENT=Y
+      - PYTHONUNBUFFERED=1
+      - HYDRA_FULL_ERROR=1
     volumes:
       - ${HOME}/.cache/ov:/root/.cache/ov:rw
       - ${HOME}/.cache/pip:/root/.cache/pip:rw
@@ -19,5 +23,4 @@ services:
       - ${HOME}/docker/isaac-sim/documents:/root/Documents:rw
       - ../logs:/workspace/SpiderBotAIProject/logs:rw
       - ../outputs:/workspace/SpiderBotAIProject/outputs:rw
-    command: >-
-      bash -lc "cd /workspace/isaaclab && ./isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task SpiderBotAIProject-v0 --headless"
+    command: ["-p", "scripts/skrlcustom/train.py", "--task", "SpiderBotAIProject-v0", "--headless"]
