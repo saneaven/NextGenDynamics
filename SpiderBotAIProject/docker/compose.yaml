@@ -1,0 +1,23 @@
+services:
+  train:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      network: host
+    image: spiderbotai-isaaclab-headless:2.3.2
+    gpus: all
+    network_mode: host
+    environment:
+      - ACCEPT_EULA=Y
+      - PRIVACY_CONSENT=Y
+    volumes:
+      - ${HOME}/.cache/ov:/root/.cache/ov:rw
+      - ${HOME}/.cache/pip:/root/.cache/pip:rw
+      - ${HOME}/.cache/nvidia/GLCache:/root/.cache/nvidia/GLCache:rw
+      - ${HOME}/docker/isaac-sim/logs:/root/.nvidia-omniverse/logs:rw
+      - ${HOME}/docker/isaac-sim/data:/root/.local/share/ov/data:rw
+      - ${HOME}/docker/isaac-sim/documents:/root/Documents:rw
+      - ../logs:/workspace/SpiderBotAIProject/logs:rw
+      - ../outputs:/workspace/SpiderBotAIProject/outputs:rw
+    command: >-
+      bash -lc "cd /workspace/IsaacLab && ./isaaclab.sh -p /workspace/SpiderBotAIProject/scripts/skrlcustom/train.py --task SpiderBotAIProject-v0 --headless"

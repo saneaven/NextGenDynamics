@@ -32,7 +32,7 @@ This repository contains the `SpiderBotAIProject` Isaac Lab extension and task i
     ```
 
 - Note: On first run, the script generates `custom_terrain.usd` under `source/SpiderBotAIProject/SpiderBotAIProject/assets/terrains/`.
-  This requires `opensimplex==0.4.5.1` in your Isaac Sim python environment.
+  This requires `opensimplex` in your Isaac Sim python environment.
 
 - Play (skrlcustom-only):
 
@@ -45,6 +45,18 @@ This repository contains the `SpiderBotAIProject` Isaac Lab extension and task i
     ```bash
     python scripts/skrlcustom/play.py --task=SpiderBotAIProject-v0 --debug_vis
     ```
+
+## Docker (Headless Training)
+
+This project can be trained headlessly using the official Isaac Lab prebuilt container image.
+
+```bash
+docker compose -f docker/compose.yaml up --build
+```
+
+Notes:
+- The compose file runs `scripts/skrlcustom/train.py` with `--headless`.
+- Training artifacts are saved to `./logs` and `./outputs` (mounted as volumes).
 
 ### Set up IDE (Optional)
 
