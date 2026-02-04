@@ -1,0 +1,15 @@
+services:
+  train:
+    command:
+      [
+        "-p",
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc_per_node=2",
+        "scripts/skrlcustom/train.py",
+        "--task",
+        "SpiderBotAIProject-v0",
+        "--headless",
+        "--distributed",
+      ]

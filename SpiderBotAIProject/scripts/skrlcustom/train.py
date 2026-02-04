@@ -60,6 +60,18 @@ parser.add_argument(
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
+
+# add local_rank argument if not present (for torch.distributed.run compatibility)
+if "--local_rank" not in parser._option_string_actions and "--local-rank" not in parser._option_string_actions:
+    parser.add_argument(
+        "--local_rank",
+        "--local-rank",
+        dest="local_rank",
+        type=int,
+        default=None,
+        help=argparse.SUPPRESS,
+    )
+
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 # always enable cameras to record video
@@ -133,8 +145,59 @@ else:
 @hydra_task_config(args_cli.task, agent_cfg_entry_point)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with custom skrl agent (PPO_RNN)."""
+    dist = None
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    if args_cli.distributed:
+        if world_size <= 1:
+            raise RuntimeError(
+                "`--distributed` requires multi-process launch. "
+                "Run with: `-m torch.distributed.run --standalone --nproc_per_node=<N> ... --distributed`"
+            )
+
+        local_rank_env = os.environ.get("LOCAL_RANK")
+        if local_rank_env is None:
+            if args_cli.local_rank is None:
+                raise RuntimeError(
+                    "`--distributed` requires torchrun-style environment variables. "
+                    "Missing `LOCAL_RANK`. Run with: `-m torch.distributed.run --standalone --nproc_per_node=<N> ... --distributed`"
+                )
+            local_rank = int(args_cli.local_rank)
+        else:
+            local_rank = int(local_rank_env)
+
+        rank_env = os.environ.get("RANK")
+        if rank_env is None:
+            raise RuntimeError(
+                "`--distributed` requires torchrun-style environment variables. Missing `RANK`."
+            )
+        rank = int(rank_env)
+
+        torch.cuda.set_device(local_rank)
+        import torch.distributed as dist  # noqa: PLC0415
+
+        dist.init_process_group(backend="nccl", init_method="env://")
+        is_main_process = rank == 0
+    else:
+        if world_size > 1:
+            raise RuntimeError(
+                "Detected `WORLD_SIZE>1` but `--distributed` is not set. "
+                "Either add `--distributed` or run without torch.distributed."
+            )
+        local_rank = 0
+        rank = 0
+        is_main_process = True
+
     # override configurations with non-hydra CLI arguments
-    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    num_envs = args_cli.num_envs
+    if num_envs is None:
+        env_num_envs = os.environ.get("NUM_ENVS", "").strip()
+        if env_num_envs:
+            try:
+                num_envs = int(env_num_envs)
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid NUM_ENVS={env_num_envs!r}; expected integer") from exc
+    if num_envs is not None:
+        env_cfg.scene.num_envs = num_envs
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     if args_cli.debug_vis:
         env_cfg.commands.spawn.debug_vis = True
@@ -142,7 +205,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # multi-gpu training config
     if args_cli.distributed:
-        env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
+        env_cfg.sim.device = f"cuda:{local_rank}"
 
     # max iterations for training
     if args_cli.max_iterations:
@@ -151,33 +214,52 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # randomly sample a seed if seed = -1
     if args_cli.seed == -1:
-        args_cli.seed = random.randint(0, 10000)
+        sampled_seed = random.randint(0, 10000) if is_main_process else None
+        if args_cli.distributed:
+            obj_list = [sampled_seed]
+            dist.broadcast_object_list(obj_list, src=0)
+            sampled_seed = obj_list[0]
+        args_cli.seed = sampled_seed
 
     # set the agent and environment seed from command line
     agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
-    env_cfg.seed = agent_cfg["seed"]
+    env_cfg.seed = int(agent_cfg["seed"])
+    if args_cli.distributed:
+        env_cfg.seed = int(agent_cfg["seed"]) + rank
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
     log_root_path = os.path.abspath(log_root_path)
-    print(f"[INFO] Logging experiment in directory: {log_root_path}")
+    if is_main_process:
+        print(f"[INFO] Logging experiment in directory: {log_root_path}")
+
     # specify directory for logging runs: {time-stamp}_{run_name}
-    log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
-    print(f"Exact experiment name requested from command line: {log_dir}")
-    if agent_cfg["agent"]["experiment"]["experiment_name"]:
-        log_dir += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
+    log_dir = None
+    if is_main_process:
+        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
+        if agent_cfg["agent"]["experiment"]["experiment_name"]:
+            log_dir += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
+
+    if args_cli.distributed:
+        obj_list = [log_dir]
+        dist.broadcast_object_list(obj_list, src=0)
+        log_dir = obj_list[0]
+
     agent_cfg["agent"]["experiment"]["directory"] = log_root_path
     agent_cfg["agent"]["experiment"]["experiment_name"] = log_dir
     log_dir = os.path.join(log_root_path, log_dir)
 
     # dump the configuration into log-directory
-    os.makedirs(os.path.join(log_dir, "params"), exist_ok=True)
-    dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
-    dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
-    with open(os.path.join(log_dir, "params", "env.pkl"), "wb") as f:
-        pickle.dump(env_cfg, f)
-    with open(os.path.join(log_dir, "params", "agent.pkl"), "wb") as f:
-        pickle.dump(agent_cfg, f)
+    if is_main_process:
+        os.makedirs(os.path.join(log_dir, "params"), exist_ok=True)
+        dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
+        dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
+        with open(os.path.join(log_dir, "params", "env.pkl"), "wb") as f:
+            pickle.dump(env_cfg, f)
+        with open(os.path.join(log_dir, "params", "agent.pkl"), "wb") as f:
+            pickle.dump(agent_cfg, f)
+    if args_cli.distributed:
+        dist.barrier()
 
     # get checkpoint path (to resume training)
     resume_path = retrieve_file_path(args_cli.checkpoint) if args_cli.checkpoint else None
@@ -192,20 +274,32 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env_cfg.cameras = args_cli.enable_cameras
     from SpiderBotAIProject.tasks.manager_based.spiderbot_ai.terrain_gen_usd import ensure_custom_terrain_usd
 
-    ensure_custom_terrain_usd(
-        size_x=float(env_cfg.height_map_size_x),
-        size_y=float(env_cfg.height_map_size_y),
-        meter_per_grid=float(env_cfg.height_map_meter_per_grid),
-        seed=int(env_cfg.seed or 42),
-    )
-    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if args_cli.distributed:
+        if is_main_process:
+            ensure_custom_terrain_usd(
+                size_x=float(env_cfg.height_map_size_x),
+                size_y=float(env_cfg.height_map_size_y),
+                meter_per_grid=float(env_cfg.height_map_meter_per_grid),
+                seed=int(agent_cfg["seed"] or 42),
+            )
+        dist.barrier()
+    else:
+        ensure_custom_terrain_usd(
+            size_x=float(env_cfg.height_map_size_x),
+            size_y=float(env_cfg.height_map_size_y),
+            meter_per_grid=float(env_cfg.height_map_meter_per_grid),
+            seed=int(agent_cfg["seed"] or 42),
+        )
+
+    record_video = bool(args_cli.video and is_main_process)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if record_video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
 
     # wrap for video recording
-    if args_cli.video:
+    if record_video:
         video_kwargs = {
             "video_folder": os.path.join(log_dir, "videos", "train"),
             "step_trigger": lambda step: step % args_cli.video_interval == 0,
@@ -233,8 +327,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         init_log_std=agent_cfg["model"]["log_std_init"],
     )
     models["value"] = models["policy"]
+    if args_cli.distributed:
+        from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: PLC0415
+
+        models["policy"] = DDP(
+            models["policy"],
+            device_ids=[local_rank],
+            output_device=local_rank,
+            broadcast_buffers=False,
+        )
+        models["value"] = models["policy"]
 
     cfg = agent_cfg["agent"].copy()
+    if args_cli.distributed and not is_main_process:
+        cfg["experiment"] = cfg["experiment"].copy()
+        cfg["experiment"]["tensorboard"] = False
+        disabled_interval = int(agent_cfg["trainer"]["timesteps"]) + 1
+        cfg["experiment"]["write_interval"] = disabled_interval
+        cfg["experiment"]["checkpoint_interval"] = disabled_interval
 
     scheduler_cfg = cfg.get("learning_rate_scheduler")
     if isinstance(scheduler_cfg, str):
@@ -263,13 +373,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # load checkpoint (if specified)
     if resume_path:
-        print(f"[INFO] Loading model checkpoint from: {resume_path}")
+        if is_main_process:
+            print(f"[INFO] Loading model checkpoint from: {resume_path}")
         agent.load(resume_path)
 
     trainer = SequentialTrainer(cfg=agent_cfg["trainer"].copy(), env=env, agents=agent)
-    trainer.train()
-
-    env.close()
+    try:
+        trainer.train()
+    finally:
+        env.close()
+        if args_cli.distributed and dist is not None:
+            dist.barrier()
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":
