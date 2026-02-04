@@ -12,6 +12,7 @@ This is a project-local version of the ChargeProject custom PPO workflow, adapte
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import os
 import sys
 
 from isaaclab.app import AppLauncher
@@ -74,6 +75,31 @@ if "--local_rank" not in parser._option_string_actions and "--local-rank" not in
 
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+
+# In distributed launches (torchrun), ensure the CUDA device is selected before starting the simulator.
+# This prevents early initialization (e.g., inside Kit/AppLauncher) from binding NCCL/contexts to the wrong GPU.
+if args_cli.distributed:
+    world_size_env = int(os.environ.get("WORLD_SIZE", "1"))
+    if world_size_env <= 1:
+        raise RuntimeError(
+            "--distributed requires multi-process launch. "
+        )
+
+    local_rank_env = os.environ.get("LOCAL_RANK")
+    if local_rank_env is None:
+        if args_cli.local_rank is None:
+            raise RuntimeError(
+                "Missing LOCAL_RANK"
+            )
+        local_rank = int(args_cli.local_rank)
+    else:
+        local_rank = int(local_rank_env)
+
+    import torch  # noqa: PLC0415
+
+    torch.cuda.set_device(local_rank)
+    args_cli.device = f"cuda:{local_rank}"
+
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -85,9 +111,9 @@ sys.argv = [sys.argv[0]] + hydra_args
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
-"""Rest everything follows."""
 
-import os
+#### SKRL TRAINING SCRIPT BELOW ####
+
 import random
 from datetime import datetime
 
