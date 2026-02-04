@@ -146,6 +146,7 @@ else:
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with custom skrl agent (PPO_RNN)."""
     dist = None
+    created_process_group = False
     world_size = int(os.environ.get("WORLD_SIZE", "1"))
     if args_cli.distributed:
         if world_size <= 1:
@@ -175,7 +176,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         torch.cuda.set_device(local_rank)
         import torch.distributed as dist  # noqa: PLC0415
 
-        dist.init_process_group(backend="nccl", init_method="env://")
+        if not dist.is_initialized():
+            dist.init_process_group(backend="nccl", init_method="env://")
+            created_process_group = True
+        rank = dist.get_rank()
+        world_size = dist.get_world_size()
         is_main_process = rank == 0
     else:
         if world_size > 1:
@@ -384,7 +389,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         env.close()
         if args_cli.distributed and dist is not None:
             dist.barrier()
-            dist.destroy_process_group()
+            if created_process_group:
+                dist.destroy_process_group()
 
 
 if __name__ == "__main__":

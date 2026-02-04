@@ -14,6 +14,7 @@ services:
       - PRIVACY_CONSENT=Y
       - PYTHONUNBUFFERED=1
       - HYDRA_FULL_ERROR=1
+      - NUM_ENVS=${NUM_ENVS:-}
     volumes:
       - ${HOME}/.cache/ov:/root/.cache/ov:rw
       - ${HOME}/.cache/pip:/root/.cache/pip:rw

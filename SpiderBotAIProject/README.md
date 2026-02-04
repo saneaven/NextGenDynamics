@@ -57,6 +57,7 @@ docker compose -f docker/compose.yaml up --build
 Notes:
 - The compose file runs `scripts/skrlcustom/train.py` with `--headless`.
 - Training artifacts are saved to `./logs` and `./outputs` (mounted as volumes).
+- To override the env count, set `NUM_ENVS` (e.g. `NUM_ENVS=64 docker compose -f docker/compose.yaml up --build`).
 
 ### Docker (2GPU DDP)
 
@@ -67,8 +68,7 @@ docker compose -f docker/compose.yaml -f docker/compose.ddp.yaml up --build
 ```
 
 Notes:
-- `--num_envs` is interpreted as **per-GPU** (total envs = `--num_envs * WORLD_SIZE`).
-- Only rank 0 writes TensorBoard/checkpoints (to avoid log/checkpoint collisions).
+- `--num_envs` is interpreted as per gpu (total envs = `--num_envs * WORLD_SIZE`).
 
 ### Set up IDE (Optional)
 
