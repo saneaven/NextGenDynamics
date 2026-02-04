@@ -11,44 +11,8 @@ This is a project-local version of the ChargeProject custom PPO workflow, adapte
 
 """Launch Isaac Sim Simulator first."""
 
-import os
-import sys
-
-
-def _parse_local_rank_from_argv(argv: list[str]) -> int | None:
-    for idx, arg in enumerate(argv):
-        if arg.startswith("--local_rank="):
-            return int(arg.split("=", 1)[1])
-        if arg.startswith("--local-rank="):
-            return int(arg.split("=", 1)[1])
-        if arg in ("--local_rank", "--local-rank") and idx + 1 < len(argv):
-            return int(argv[idx + 1])
-    return None
-
-
-# In distributed launches (torchrun), ensure each rank can only see *one* GPU from process start.
-# This prevents early initialization (e.g., inside Kit/AppLauncher) from binding NCCL/contexts to the wrong GPU.
-if "--distributed" in sys.argv:
-    local_rank_env = os.environ.get("LOCAL_RANK")
-    if local_rank_env is not None:
-        try:
-            local_rank = int(local_rank_env)
-        except ValueError as exc:
-            raise RuntimeError(f"Invalid LOCAL_RANK={local_rank_env!r}; expected integer") from exc
-    else:
-        try:
-            local_rank = _parse_local_rank_from_argv(sys.argv)
-        except ValueError as exc:
-            raise RuntimeError("Invalid --local-rank/--local_rank; expected integer") from exc
-
-    if local_rank is None:
-        raise RuntimeError(
-            "`--distributed` requires torchrun-style environment variables. "
-        )
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(local_rank)
-
 import argparse
+import sys
 
 from isaaclab.app import AppLauncher
 
@@ -111,14 +75,6 @@ if "--local_rank" not in parser._option_string_actions and "--local-rank" not in
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 
-# In distributed launches (torchrun), pin the process to its only-visible CUDA device (cuda:0)
-# before starting the simulator.
-if args_cli.distributed:
-    import torch  # noqa: PLC0415
-
-    torch.cuda.set_device(0)
-    args_cli.device = "cuda:0"
-
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -133,6 +89,7 @@ simulation_app = app_launcher.app
 
 #### SKRL TRAINING SCRIPT BELOW ####
 
+import os
 import random
 from datetime import datetime
 
@@ -218,7 +175,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             )
         rank = int(rank_env)
 
-        torch.cuda.set_device(0)
+        torch.cuda.set_device(local_rank)
         import torch.distributed as dist  # noqa: PLC0415
 
         if not dist.is_initialized():
@@ -255,7 +212,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # multi-gpu training config
     if args_cli.distributed:
-        env_cfg.sim.device = "cuda:0"
+        env_cfg.sim.device = f"cuda:{local_rank}"
 
     # max iterations for training
     if args_cli.max_iterations:
@@ -382,8 +339,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         ddp_model = DDP(
             models["policy"],
-            device_ids=[0],
-            output_device=0,
+            device_ids=[local_rank],
+            output_device=local_rank,
             broadcast_buffers=False,
         )
         models["policy"] = ddp_model
