@@ -252,23 +252,26 @@ def build_bev_inplace(
     density_divisor = max(1.0, density_normalization or builder.density_normalization)
 
     for channel_index, channel_name in enumerate(builder.channels):
-        channel_view = builder.tmp_bev[:, channel_index, :, :].view(-1)
+        channel_view = builder.tmp_bev[:, channel_index, :, :]
 
         if channel_name == "max_height":
-            channel_view.copy_(builder.max_buf)
+            channel_view.copy_(builder.max_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
             channel_view.sub_(z_min)
             channel_view.mul_(z_span_inv)
         elif channel_name == "mean_height":
-            channel_view.copy_(builder.sum_buf)
+            channel_view.copy_(builder.sum_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
             builder.divisor_buf.copy_(builder.count_buf)
             builder.divisor_buf.clamp_(min=1.0)
-            channel_view.div_(builder.divisor_buf)
+            channel_view.div_(builder.divisor_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
             torch.gt(builder.count_buf, 0.0, out=builder.count_nonzero)
-            channel_view.masked_fill_(~builder.count_nonzero, z_min)
+            channel_view.masked_fill_(
+                ~builder.count_nonzero.view(builder.batch_size, builder.height_cells, builder.width_cells),
+                z_min,
+            )
             channel_view.sub_(z_min)
             channel_view.mul_(z_span_inv)
         elif channel_name == "density":
-            channel_view.copy_(builder.count_buf)
+            channel_view.copy_(builder.count_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
             channel_view.div_(density_divisor)
             channel_view.clamp_(max=1.0)
         else:
