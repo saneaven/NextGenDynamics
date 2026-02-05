@@ -301,17 +301,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     model = model.to(device)
     models["policy"] = model
     models["value"] = model
-    if args_cli.distributed:
-        from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: PLC0415
-
-        ddp_model = DDP(
-            models["policy"],
-            device_ids=[local_rank],
-            output_device=local_rank,
-            broadcast_buffers=False,
-        )
-        models["policy"] = ddp_model
-        models["value"] = ddp_model
 
     cfg = agent_cfg["agent"].copy()
     if args_cli.distributed and not is_main_process:
