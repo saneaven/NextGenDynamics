@@ -38,6 +38,7 @@ class MapCommandTerm(CommandTerm):
             far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
             exploration_bonus=torch.zeros(self.num_envs, device=self.device),
         )
+        self.can_see = torch.zeros(self.num_envs, 1, device=self.device)
         self._last_update_step = -1
 
     @property
@@ -52,7 +53,8 @@ class MapCommandTerm(CommandTerm):
             return
         self._last_update_step = step
 
-        self.output = self._map_manager.update(
+        self._map_manager.update_into(
+            self.output,
             env_origins=self._env.scene.env_origins,
             robot_pos_w=self._robot.data.root_pos_w,
             robot_yaw_w=self._robot.data.heading_w.unsqueeze(-1),
@@ -68,6 +70,7 @@ class MapCommandTerm(CommandTerm):
         self.output.height_data[env_ids] = 0.0
         self.output.far_staleness[env_ids] = 0.0
         self.output.exploration_bonus[env_ids] = 0.0
+        self.can_see[env_ids] = 0.0
         return super().reset(env_ids=env_ids)
 
     def _update_metrics(self):

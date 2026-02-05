@@ -6,37 +6,35 @@ import torch
 
 
 def quaternion_to_rotation_matrix_wxyz(quaternion_wxyz: torch.Tensor) -> torch.Tensor:
-    """Convert unit quaternions to rotation matrices.
-
-    Args:
-        quaternion_wxyz: (B, 4) in [w, x, y, z] order.
-
-    Returns:
-        (B, 3, 3) rotation matrices.
-    """
-    w, x, y, z = quaternion_wxyz.unbind(-1)
-    w2, x2, y2, z2 = w * w, x * x, y * y, z * z
-    wx, wy, wz = w * x, w * y, w * z
-    xy, xz, yz = x * y, x * z, y * z
-
+    """Convert unit quaternions to rotation matrices."""
     rotation_matrix = torch.empty(
         (quaternion_wxyz.shape[0], 3, 3),
         device=quaternion_wxyz.device,
         dtype=quaternion_wxyz.dtype,
     )
-
-    rotation_matrix[:, 0, 0] = 1 - 2 * (y2 + z2)
-    rotation_matrix[:, 0, 1] = 2 * (xy - wz)
-    rotation_matrix[:, 0, 2] = 2 * (xz + wy)
-
-    rotation_matrix[:, 1, 0] = 2 * (xy + wz)
-    rotation_matrix[:, 1, 1] = 1 - 2 * (x2 + z2)
-    rotation_matrix[:, 1, 2] = 2 * (yz - wx)
-
-    rotation_matrix[:, 2, 0] = 2 * (xz - wy)
-    rotation_matrix[:, 2, 1] = 2 * (yz + wx)
-    rotation_matrix[:, 2, 2] = 1 - 2 * (x2 + y2)
+    quaternion_to_rotation_matrix_wxyz_inplace(quaternion_wxyz, rotation_matrix)
     return rotation_matrix
+
+
+def quaternion_to_rotation_matrix_wxyz_inplace(quaternion_wxyz: torch.Tensor, out: torch.Tensor) -> torch.Tensor:
+    """Convert unit quaternions to rotation matrices into a preallocated output tensor."""
+    w, x, y, z = quaternion_wxyz.unbind(-1)
+    w2, x2, y2, z2 = w * w, x * x, y * y, z * z
+    wx, wy, wz = w * x, w * y, w * z
+    xy, xz, yz = x * y, x * z, y * z
+
+    out[:, 0, 0] = 1 - 2 * (y2 + z2)
+    out[:, 0, 1] = 2 * (xy - wz)
+    out[:, 0, 2] = 2 * (xz + wy)
+
+    out[:, 1, 0] = 2 * (xy + wz)
+    out[:, 1, 1] = 1 - 2 * (x2 + z2)
+    out[:, 1, 2] = 2 * (yz - wx)
+
+    out[:, 2, 0] = 2 * (xz - wy)
+    out[:, 2, 1] = 2 * (yz + wx)
+    out[:, 2, 2] = 1 - 2 * (x2 + y2)
+    return out
 
 
 def transform_world_to_ego(
@@ -44,20 +42,240 @@ def transform_world_to_ego(
     sensor_position_world: torch.Tensor,
     sensor_quaternion_world_wxyz: torch.Tensor,
 ) -> torch.Tensor:
-    """Transform points from world frame into the ego (sensor/base) frame.
-
-    Args:
-        world_points: (B, P, 3)
-        sensor_position_world: (B, 3)
-        sensor_quaternion_world_wxyz: (B, 4) in [w, x, y, z] order.
-
-    Returns:
-        ego_points: (B, P, 3)
-    """
-    rotation_world_to_sensor = quaternion_to_rotation_matrix_wxyz(sensor_quaternion_world_wxyz)
-    relative_points = world_points - sensor_position_world[:, None, :]
-    ego_points = torch.einsum("bij,bpj->bpi", rotation_world_to_sensor.transpose(1, 2), relative_points)
+    """Transform points from world frame into the ego (sensor/base) frame."""
+    ego_points = torch.empty_like(world_points)
+    rotation_world_to_sensor = torch.empty(
+        (world_points.shape[0], 3, 3),
+        device=world_points.device,
+        dtype=world_points.dtype,
+    )
+    relative_points = torch.empty_like(world_points)
+    transform_world_to_ego_inplace(
+        world_points,
+        sensor_position_world,
+        sensor_quaternion_world_wxyz,
+        out=ego_points,
+        rotation_world_to_sensor=rotation_world_to_sensor,
+        relative_points=relative_points,
+    )
     return ego_points
+
+
+def transform_world_to_ego_inplace(
+    world_points: torch.Tensor,
+    sensor_position_world: torch.Tensor,
+    sensor_quaternion_world_wxyz: torch.Tensor,
+    out: torch.Tensor,
+    rotation_world_to_sensor: torch.Tensor | None = None,
+    relative_points: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Transform points from world frame into the ego frame into a preallocated output tensor."""
+    if rotation_world_to_sensor is None:
+        rotation_world_to_sensor = torch.empty(
+            (world_points.shape[0], 3, 3),
+            device=world_points.device,
+            dtype=world_points.dtype,
+        )
+    if relative_points is None:
+        relative_points = torch.empty_like(world_points)
+
+    quaternion_to_rotation_matrix_wxyz_inplace(sensor_quaternion_world_wxyz, rotation_world_to_sensor)
+    relative_points.copy_(world_points)
+    relative_points.sub_(sensor_position_world[:, None, :])
+    torch.bmm(relative_points, rotation_world_to_sensor.transpose(1, 2), out=out)
+    return out
+
+
+class BEVWorkspaceBuilder:
+    """Workspace that reuses buffers for BEV rasterization."""
+
+    def __init__(
+        self,
+        *,
+        batch_size: int,
+        num_points: int,
+        device: torch.device | str,
+        dtype: torch.dtype,
+        x_limits_meters: tuple[float, float] = (-12.8, 12.8),
+        y_limits_meters: tuple[float, float] = (-12.8, 12.8),
+        z_limits_meters: tuple[float, float] = (-3.0, 2.0),
+        resolution_meters: float = 0.40,
+        density_normalization: float = 10.0,
+        channels: Sequence[str] = ("max_height", "mean_height", "density"),
+    ) -> None:
+        self.x_limits_meters = x_limits_meters
+        self.y_limits_meters = y_limits_meters
+        self.z_limits_meters = z_limits_meters
+        self.resolution_meters = float(resolution_meters)
+        self.density_normalization = float(density_normalization)
+        self.channels = tuple(channels)
+
+        self.width_cells = int((x_limits_meters[1] - x_limits_meters[0]) / self.resolution_meters)
+        self.height_cells = int((y_limits_meters[1] - y_limits_meters[0]) / self.resolution_meters)
+        self.cells_per_sample = self.width_cells * self.height_cells
+
+        self.batch_size = int(batch_size)
+        self.num_points = int(num_points)
+        self.device = torch.device(device)
+        self.dtype = dtype
+        self._allocate_buffers()
+
+    def _allocate_buffers(self) -> None:
+        b = self.batch_size
+        p = self.num_points
+        c = self.cells_per_sample
+
+        self.batch_offsets = (
+            torch.arange(b, device=self.device, dtype=torch.long).view(b, 1) * self.cells_per_sample
+        )
+
+        self.grid_x = torch.zeros((b, p), device=self.device, dtype=torch.long)
+        self.grid_y = torch.zeros((b, p), device=self.device, dtype=torch.long)
+        self.linear_idx = torch.zeros((b, p), device=self.device, dtype=torch.long)
+        self.global_idx = torch.zeros((b, p), device=self.device, dtype=torch.long)
+
+        self.valid_mask = torch.zeros((b, p), device=self.device, dtype=torch.bool)
+        self.valid_mask_tmp = torch.zeros((b, p), device=self.device, dtype=torch.bool)
+        self.valid_weight = torch.zeros((b, p), device=self.device, dtype=self.dtype)
+
+        self.tmp_x = torch.zeros((b, p), device=self.device, dtype=self.dtype)
+        self.tmp_y = torch.zeros((b, p), device=self.device, dtype=self.dtype)
+        self.z_for_max = torch.zeros((b, p), device=self.device, dtype=self.dtype)
+        self.z_for_sum = torch.zeros((b, p), device=self.device, dtype=self.dtype)
+
+        self.max_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
+        self.sum_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
+        self.count_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
+        self.divisor_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
+        self.count_nonzero = torch.zeros((b * c,), device=self.device, dtype=torch.bool)
+
+        self.tmp_bev = torch.zeros((b, len(self.channels), self.height_cells, self.width_cells), device=self.device)
+
+        # Reused for world->ego transform.
+        self.ego_points = torch.zeros((b, p, 3), device=self.device, dtype=self.dtype)
+        self.relative_points = torch.zeros((b, p, 3), device=self.device, dtype=self.dtype)
+        self.rotation_matrix = torch.zeros((b, 3, 3), device=self.device, dtype=self.dtype)
+
+    def rebuild(self, *, batch_size: int, num_points: int, device: torch.device | str, dtype: torch.dtype) -> None:
+        self.batch_size = int(batch_size)
+        self.num_points = int(num_points)
+        self.device = torch.device(device)
+        self.dtype = dtype
+        self._allocate_buffers()
+
+    def ensure_shape(self, *, batch_size: int, num_points: int, device: torch.device | str, dtype: torch.dtype) -> None:
+        if (
+            int(batch_size) != self.batch_size
+            or int(num_points) != self.num_points
+            or torch.device(device) != self.device
+            or dtype != self.dtype
+        ):
+            self.rebuild(batch_size=batch_size, num_points=num_points, device=device, dtype=dtype)
+
+
+@torch.no_grad()
+def build_bev_inplace(
+    builder: BEVWorkspaceBuilder,
+    ego_points: torch.Tensor,
+    out: torch.Tensor,
+    *,
+    density_normalization: float | None = None,
+) -> torch.Tensor:
+    """Rasterize ego-frame points into BEV channels using preallocated workspace."""
+    batch_size, num_points, _ = ego_points.shape
+    builder.ensure_shape(batch_size=batch_size, num_points=num_points, device=ego_points.device, dtype=ego_points.dtype)
+
+    x_min, x_max = builder.x_limits_meters
+    y_min, y_max = builder.y_limits_meters
+    z_min, z_max = builder.z_limits_meters
+
+    x_values, y_values, z_values = ego_points.unbind(-1)
+
+    torch.ge(x_values, x_min, out=builder.valid_mask)
+    torch.lt(x_values, x_max, out=builder.valid_mask_tmp)
+    builder.valid_mask.logical_and_(builder.valid_mask_tmp)
+    torch.ge(y_values, y_min, out=builder.valid_mask_tmp)
+    builder.valid_mask.logical_and_(builder.valid_mask_tmp)
+    torch.lt(y_values, y_max, out=builder.valid_mask_tmp)
+    builder.valid_mask.logical_and_(builder.valid_mask_tmp)
+    torch.ge(z_values, z_min, out=builder.valid_mask_tmp)
+    builder.valid_mask.logical_and_(builder.valid_mask_tmp)
+    torch.le(z_values, z_max, out=builder.valid_mask_tmp)
+    builder.valid_mask.logical_and_(builder.valid_mask_tmp)
+
+    inv_resolution = 1.0 / builder.resolution_meters
+
+    builder.tmp_x.copy_(x_values)
+    builder.tmp_x.sub_(x_min)
+    builder.tmp_x.mul_(inv_resolution)
+    builder.tmp_x.floor_()
+    builder.grid_x.copy_(builder.tmp_x)
+    builder.grid_x.clamp_(0, builder.width_cells - 1)
+
+    builder.tmp_y.copy_(y_values)
+    builder.tmp_y.sub_(y_min)
+    builder.tmp_y.mul_(inv_resolution)
+    builder.tmp_y.floor_()
+    builder.grid_y.copy_(builder.tmp_y)
+    builder.grid_y.clamp_(0, builder.height_cells - 1)
+
+    builder.linear_idx.copy_(builder.grid_y)
+    builder.linear_idx.mul_(builder.width_cells)
+    builder.linear_idx.add_(builder.grid_x)
+
+    builder.global_idx.copy_(builder.linear_idx)
+    builder.global_idx.add_(builder.batch_offsets)
+
+    builder.valid_weight.zero_()
+    builder.valid_weight.masked_fill_(builder.valid_mask, 1.0)
+
+    builder.z_for_max.copy_(z_values)
+    builder.z_for_max.masked_fill_(~builder.valid_mask, z_min)
+    builder.z_for_sum.copy_(z_values)
+    builder.z_for_sum.mul_(builder.valid_weight)
+
+    flat_idx = builder.global_idx.view(-1)
+    flat_z_for_max = builder.z_for_max.view(-1)
+    flat_z_for_sum = builder.z_for_sum.view(-1)
+    flat_valid_weight = builder.valid_weight.view(-1)
+
+    builder.max_buf.fill_(z_min)
+    builder.max_buf.scatter_reduce_(0, flat_idx, flat_z_for_max, reduce="amax", include_self=True)
+
+    builder.sum_buf.zero_()
+    builder.sum_buf.scatter_add_(0, flat_idx, flat_z_for_sum)
+
+    builder.count_buf.zero_()
+    builder.count_buf.scatter_add_(0, flat_idx, flat_valid_weight)
+
+    z_span_inv = 1.0 / max(1e-6, (z_max - z_min))
+    density_divisor = max(1.0, density_normalization or builder.density_normalization)
+
+    for channel_index, channel_name in enumerate(builder.channels):
+        channel_view = builder.tmp_bev[:, channel_index, :, :].view(-1)
+
+        if channel_name == "max_height":
+            channel_view.copy_(builder.max_buf)
+            channel_view.sub_(z_min)
+            channel_view.mul_(z_span_inv)
+        elif channel_name == "mean_height":
+            channel_view.copy_(builder.sum_buf)
+            builder.divisor_buf.copy_(builder.count_buf)
+            builder.divisor_buf.clamp_(min=1.0)
+            channel_view.div_(builder.divisor_buf)
+            torch.gt(builder.count_buf, 0.0, out=builder.count_nonzero)
+            channel_view.masked_fill_(~builder.count_nonzero, z_min)
+            channel_view.sub_(z_min)
+            channel_view.mul_(z_span_inv)
+        elif channel_name == "density":
+            channel_view.copy_(builder.count_buf)
+            channel_view.div_(density_divisor)
+            channel_view.clamp_(max=1.0)
+        else:
+            raise ValueError(f"Unknown channel name: {channel_name}")
+
+    out.copy_(builder.tmp_bev)
+    return out
 
 
 @torch.no_grad()
@@ -70,85 +288,25 @@ def build_bev(
     density_normalization: float = 10.0,
     channels: Sequence[str] = ("max_height", "mean_height", "density"),
 ) -> torch.Tensor:
-    """Create a BEV tensor suitable for 2D CNN input.
-
-    Returns:
-        (B, C, H, W) float32 tensor.
-    """
-    device = ego_points.device
-    dtype = ego_points.dtype
+    """Create a BEV tensor suitable for 2D CNN input."""
     batch_size, num_points, _ = ego_points.shape
-
-    x_min, x_max = x_limits_meters
-    y_min, y_max = y_limits_meters
-    z_min, z_max = z_limits_meters
-
-    width_cells = int((x_max - x_min) / resolution_meters)
-    height_cells = int((y_max - y_min) / resolution_meters)
-    total_cells_per_sample = height_cells * width_cells
-    total_cells_all_batches = batch_size * total_cells_per_sample
-
-    x_values, y_values, z_values = ego_points.unbind(-1)
-
-    valid_mask = (
-        (x_values >= x_min)
-        & (x_values < x_max)
-        & (y_values >= y_min)
-        & (y_values < y_max)
-        & (z_values >= z_min)
-        & (z_values <= z_max)
+    builder = BEVWorkspaceBuilder(
+        batch_size=batch_size,
+        num_points=num_points,
+        device=ego_points.device,
+        dtype=ego_points.dtype,
+        x_limits_meters=x_limits_meters,
+        y_limits_meters=y_limits_meters,
+        z_limits_meters=z_limits_meters,
+        resolution_meters=resolution_meters,
+        density_normalization=density_normalization,
+        channels=channels,
     )
-
-    grid_x = torch.clamp(((x_values - x_min) / resolution_meters).floor().long(), 0, width_cells - 1)
-    grid_y = torch.clamp(((y_values - y_min) / resolution_meters).floor().long(), 0, height_cells - 1)
-
-    batch_indices, point_indices = torch.where(valid_mask)
-    if batch_indices.numel() == 0:
-        output = torch.zeros(
-            (batch_size, len(channels), height_cells, width_cells),
-            device=device,
-            dtype=torch.float32,
-        )
-        return output.contiguous(memory_format=torch.channels_last)
-
-    grid_x_valid = grid_x[batch_indices, point_indices]
-    grid_y_valid = grid_y[batch_indices, point_indices]
-    linear_index_within_sample = grid_y_valid * width_cells + grid_x_valid
-
-    z_valid = z_values[batch_indices, point_indices]
-
-    global_linear_index = linear_index_within_sample + batch_indices * total_cells_per_sample
-    global_size = total_cells_all_batches
-
-    channel_outputs: list[torch.Tensor] = []
-    z_range_span = max(1e-6, (z_max - z_min))
-
-    for channel_name in channels:
-        if channel_name == "max_height":
-            max_buffer = torch.full((global_size,), z_min, device=device, dtype=dtype)
-            max_buffer.scatter_reduce_(0, global_linear_index, z_valid, reduce="amax")
-            max_height_channel = max_buffer.view(batch_size, height_cells, width_cells)
-            max_height_channel = (max_height_channel - z_min) / z_range_span
-            channel_outputs.append(max_height_channel)
-        elif channel_name == "mean_height":
-            sum_z = torch.zeros((global_size,), device=device, dtype=dtype)
-            count_points = torch.zeros((global_size,), device=device, dtype=dtype)
-            sum_z.scatter_add_(0, global_linear_index, z_valid)
-            count_points.scatter_add_(0, global_linear_index, torch.ones_like(z_valid))
-
-            mean_z = sum_z / torch.clamp(count_points, min=1.0)
-            mean_z = torch.where(count_points > 0, mean_z, torch.full_like(mean_z, z_min))
-            mean_height_channel = (mean_z.view(batch_size, height_cells, width_cells) - z_min) / z_range_span
-            channel_outputs.append(mean_height_channel)
-        elif channel_name == "density":
-            counts = torch.bincount(global_linear_index, minlength=global_size).to(dtype)
-            density_channel = (counts / max(1.0, density_normalization)).clamp(max=1.0).view(
-                batch_size, height_cells, width_cells
-            )
-            channel_outputs.append(density_channel)
-        else:
-            raise ValueError(f"Unknown channel name: {channel_name}")
-
-    bev_tensor = torch.stack(channel_outputs, dim=1).to(torch.float32)
-    return bev_tensor.contiguous(memory_format=torch.channels_last)
+    output = torch.empty(
+        (batch_size, len(channels), builder.height_cells, builder.width_cells),
+        device=ego_points.device,
+        dtype=torch.float32,
+    )
+    build_bev_inplace(builder, ego_points, output, density_normalization=density_normalization)
+    return output.contiguous(memory_format=torch.channels_last)
 

@@ -41,8 +41,7 @@ def reach_target_reward(env) -> torch.Tensor:
 
     waypoint = env.command_manager.get_term("waypoint")
     waypoint.ensure_updated()
-    reward = torch.zeros(env.num_envs, device=env.device)
-    reward[waypoint.reached_target] = 0.5 + waypoint.targets_reached[waypoint.reached_target] * 0.5
+    reward = (0.5 + waypoint.targets_reached * 0.5) * waypoint.reached_target.to(dtype=waypoint.targets_reached.dtype)
     return reward * waypoint_mask
 
 

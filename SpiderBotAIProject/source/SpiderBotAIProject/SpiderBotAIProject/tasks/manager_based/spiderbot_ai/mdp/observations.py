@@ -36,7 +36,7 @@ def policy_observations(env) -> torch.Tensor:
     target_unit_vector, target_distance = _relative_target_info(robot, waypoint.desired_pos)
     next_target_unit_vector, next_target_distance = _relative_target_info(robot, waypoint.next_desired_pos)
 
-    can_see = torch.zeros(env.num_envs, 1, device=env.device)
+    can_see = map_term.can_see
     one_hot_state = mode_term.command
 
     obs = torch.cat(
