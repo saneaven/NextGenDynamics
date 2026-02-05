@@ -62,44 +62,17 @@ parser.add_argument(
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 
-# add local_rank argument if not present (for torch.distributed.run compatibility)
+# torchrun passes `--local-rank` to each worker process. Consume it so Hydra doesn't see it.
 if "--local_rank" not in parser._option_string_actions and "--local-rank" not in parser._option_string_actions:
-    parser.add_argument(
-        "--local_rank",
-        "--local-rank",
-        dest="local_rank",
-        type=int,
-        default=None,
-        help=argparse.SUPPRESS,
-    )
+    parser.add_argument("--local_rank", "--local-rank", dest="local_rank", type=int, default=0, help=argparse.SUPPRESS)
 
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 
-# If launched via torchrun but without `--distributed`, fail fast to avoid confusing partial setups.
-torchrun_world_size = int(os.environ.get("WORLD_SIZE", "1"))
-if not args_cli.distributed and torchrun_world_size > 1:
-    raise RuntimeError(
-        "Detected WORLD_SIZE>1 but --distributed is not set. "
-    )
-
 # In distributed runs, force AppLauncher to pick the correct GPU per-rank before Kit starts.
 if args_cli.distributed:
-    if torchrun_world_size <= 1:
-        raise RuntimeError(
-            "--distributed requires multi-process launch."
-        )
-    local_rank_env = os.environ.get("LOCAL_RANK")
-    if local_rank_env is None:
-        raise RuntimeError(
-            "--distributed requires torchrun-style environment variables. Missing LOCAL_RANK. "
-        )
-    local_rank = int(local_rank_env)
+    local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
     args_cli.device = f"cuda:{local_rank}"
-    # Bind this process to its GPU before Kit starts (PyTorch DDP recommended pattern).
-    import torch  # noqa: PLC0415
-
-    torch.cuda.set_device(local_rank)
 
 # always enable cameras to record video
 if args_cli.video:
@@ -115,7 +88,6 @@ simulation_app = app_launcher.app
 
 #### SKRL TRAINING SCRIPT BELOW ####
 
-import os
 import random
 from datetime import datetime
 
@@ -176,12 +148,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dist = None
     created_process_group = False
     if args_cli.distributed:
-        world_size = int(os.environ.get("WORLD_SIZE", "1"))
-        if world_size <= 1:
-            raise RuntimeError(
-                "--distributed requires multi-process launch."
-            )
-        local_rank = int(os.environ["LOCAL_RANK"])
+        local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
         torch.cuda.set_device(local_rank)
         import torch.distributed as dist  # noqa: PLC0415
 
@@ -189,17 +156,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             dist.init_process_group(backend="nccl", init_method="env://")
             created_process_group = True
         rank = dist.get_rank()
-        world_size = dist.get_world_size()
-        is_main_process = rank == 0
     else:
-        world_size = int(os.environ.get("WORLD_SIZE", "1"))
-        if world_size > 1:
-            raise RuntimeError(
-                "Detected WORLD_SIZE>1 but --distributed is not set. "
-            )
         local_rank = 0
         rank = 0
-        is_main_process = True
+    is_main_process = rank == 0
 
     # override configurations with non-hydra CLI arguments
     num_envs = args_cli.num_envs
@@ -222,19 +182,17 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         agent_cfg["trainer"]["timesteps"] = args_cli.max_iterations * agent_cfg["agent"]["rollouts"]
     agent_cfg["trainer"]["close_environment_at_exit"] = False
 
-    # randomly sample a seed if seed = -1
-    if args_cli.seed == -1:
-        if args_cli.distributed:
-            raise RuntimeError(
-                "--seed -1 is not supported with --distributed (multi-process). "
-            )
-        args_cli.seed = random.randint(0, 10000)
-
-    # set the agent and environment seed from command line
-    agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
-    env_cfg.seed = int(agent_cfg["seed"])
-    if args_cli.distributed:
-        env_cfg.seed = int(agent_cfg["seed"]) + rank
+    # Resolve seed (support `--seed -1` by sampling on rank0 and broadcasting).
+    seed = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
+    if seed == -1:
+        seed = random.randint(0, 10000) if is_main_process else None
+        if dist is not None:
+            seed_list = [seed]
+            dist.broadcast_object_list(seed_list, src=0)
+            seed = seed_list[0]
+    seed = int(seed)
+    agent_cfg["seed"] = seed
+    env_cfg.seed = seed + rank if args_cli.distributed else seed
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
@@ -244,14 +202,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # specify directory for logging runs: {time-stamp}_{run_name}
     if args_cli.distributed:
-        run_id = os.environ.get("TORCHELASTIC_RUN_ID")
-        if not run_id:
-            raise RuntimeError(
-                "Missing `TORCHELASTIC_RUN_ID`. Expected torchrun/torch.distributed.run launch."
-            )
-        log_dir = f"{run_id}_{algorithm}_{args_cli.ml_framework}"
-        if agent_cfg["agent"]["experiment"]["experiment_name"]:
+        log_dir = (
+            datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
+            if is_main_process
+            else None
+        )
+        if is_main_process and agent_cfg["agent"]["experiment"]["experiment_name"]:
             log_dir += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
+        log_dir_list = [log_dir]
+        dist.broadcast_object_list(log_dir_list, src=0)
+        log_dir = log_dir_list[0]
     else:
         log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
         if agent_cfg["agent"]["experiment"]["experiment_name"]:
@@ -278,7 +238,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # set the IO descriptors output directory if requested
     if isinstance(env_cfg, ManagerBasedRLEnvCfg):
         env_cfg.export_io_descriptors = args_cli.export_io_descriptors
-        env_cfg.io_descriptors_output_dir = os.path.join(log_root_path, log_dir)
+        env_cfg.io_descriptors_output_dir = log_dir
 
     # create isaac environment
     env_cfg.log_dir = log_dir
@@ -322,7 +282,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
-    set_seed(agent_cfg["seed"])
+    set_seed(env_cfg.seed)
 
     # wrap around environment for skrl
     env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
@@ -331,14 +291,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     memory = RandomMemory(memory_size=agent_cfg["agent"]["rollouts"], num_envs=env.num_envs, device=device)
 
     models = {}
-    models["policy"] = SharedRecurrentModel(
+    model = SharedRecurrentModel(
         observation_space=env.observation_space,
         action_space=env.action_space,
         device=device,
         num_envs=env.num_envs,
         init_log_std=agent_cfg["model"]["log_std_init"],
     )
-    models["value"] = models["policy"]
+    model = model.to(device)
+    models["policy"] = model
+    models["value"] = model
     if args_cli.distributed:
         from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: PLC0415
 
