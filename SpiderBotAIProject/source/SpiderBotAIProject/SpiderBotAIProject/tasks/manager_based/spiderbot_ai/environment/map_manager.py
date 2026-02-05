@@ -44,11 +44,8 @@ class MapManagerWorkspace:
     batch_offsets: torch.Tensor
     base_gx: torch.Tensor
     base_gy: torch.Tensor
-    rel_x: torch.Tensor
-    rel_y: torch.Tensor
+    rel: torch.Tensor
     col_idx: torch.Tensor
-    row_idx: torch.Tensor
-    hit_values: torch.Tensor
 
 
 class MapManager:
@@ -75,7 +72,7 @@ class MapManager:
 
         lidar_dtype = self._lidar_sensor.data.ray_hits_w.dtype
         self._num_lidar_points = int(self._lidar_sensor.data.ray_hits_w.shape[1])
-        self._workspace = self._create_workspace(self._num_lidar_points, lidar_dtype)
+        self._workspace = self._create_workspace(self._num_lidar_points)
         self._bev_builder = BEVWorkspaceBuilder(
             batch_size=self.num_envs,
             num_points=self._num_lidar_points,
@@ -83,15 +80,20 @@ class MapManager:
             dtype=lidar_dtype,
             channels=("max_height", "mean_height", "density"),
         )
-        self._default_output = MapManagerOutput(
-            nav_data=torch.zeros(self.num_envs, 1, self.config.nav_dim, self.config.nav_dim, device=self.device),
-            bev_data=torch.zeros(self.num_envs, 3, 64, 64, device=self.device),
-            height_data=torch.zeros(self.num_envs, 64, 64, device=self.device),
-            far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
-            exploration_bonus=torch.zeros(self.num_envs, device=self.device),
-        )
+        # Only allocate a default output if callers use the legacy `update()` API.
+        # Training uses `update_into` via MapCommandTerm, so eager allocation is wasted VRAM.
+        self._default_output: MapManagerOutput | None = None
 
     def update(self, env_origins, robot_pos_w, robot_yaw_w, dt) -> MapManagerOutput:
+        if self._default_output is None:
+            self._default_output = MapManagerOutput(
+                nav_data=torch.zeros(self.num_envs, 1, self.config.nav_dim, self.config.nav_dim, device=self.device),
+                bev_data=torch.zeros(self.num_envs, 3, 64, 64, device=self.device),
+                height_data=torch.zeros(self.num_envs, 64, 64, device=self.device),
+                far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
+                exploration_bonus=torch.zeros(self.num_envs, device=self.device),
+            )
+
         self.update_into(self._default_output, env_origins, robot_pos_w, robot_yaw_w, dt)
         return self._default_output
 
@@ -105,7 +107,7 @@ class MapManager:
         self._compute_height_data(output.height_data)
         self._compute_bev_data(output.bev_data)
 
-    def _create_workspace(self, num_points: int, lidar_dtype: torch.dtype) -> MapManagerWorkspace:
+    def _create_workspace(self, num_points: int) -> MapManagerWorkspace:
         dim = int(self.config.staleness_dim)
         cell_count = dim * dim
         base = torch.linspace(-1.0, 1.0, dim, device=self.device, dtype=torch.float32)
@@ -125,17 +127,14 @@ class MapManager:
             batch_offsets=torch.arange(self.num_envs, device=self.device, dtype=torch.long).view(self.num_envs, 1),
             base_gx=base_gx.unsqueeze(0).contiguous(),
             base_gy=base_gy.unsqueeze(0).contiguous(),
-            rel_x=torch.zeros((self.num_envs, num_points), device=self.device, dtype=lidar_dtype),
-            rel_y=torch.zeros((self.num_envs, num_points), device=self.device, dtype=lidar_dtype),
+            rel=torch.zeros((self.num_envs, num_points), device=self.device, dtype=torch.float32),
             col_idx=torch.zeros((self.num_envs, num_points), device=self.device, dtype=torch.long),
-            row_idx=torch.zeros((self.num_envs, num_points), device=self.device, dtype=torch.long),
-            hit_values=torch.zeros((self.num_envs, num_points), device=self.device, dtype=torch.float32),
         )
 
     def _ensure_workspace(self, num_points: int, lidar_dtype: torch.dtype) -> None:
-        if num_points != self._num_lidar_points or self._workspace.rel_x.dtype != lidar_dtype:
+        if num_points != self._num_lidar_points:
             self._num_lidar_points = num_points
-            self._workspace = self._create_workspace(num_points, lidar_dtype)
+            self._workspace = self._create_workspace(num_points)
         self._bev_builder.ensure_shape(
             batch_size=self.num_envs,
             num_points=num_points,
@@ -153,41 +152,42 @@ class MapManager:
         self.staleness_maps.add_(float(dt) * float(self.config.staleness_decay_rate))
         torch.minimum(self.staleness_maps, self.patrol_mask, out=self.staleness_maps)
 
-        torch.sub(lidar_hits_w[..., 0], env_origins[:, 0].unsqueeze(1), out=ws.rel_x)
-        torch.sub(lidar_hits_w[..., 1], env_origins[:, 1].unsqueeze(1), out=ws.rel_y)
-
-        torch.ge(ws.rel_x, -half_size, out=ws.valid_mask)
-        torch.lt(ws.rel_x, half_size, out=ws.valid_mask_tmp)
-        ws.valid_mask.logical_and_(ws.valid_mask_tmp)
-        torch.ge(ws.rel_y, -half_size, out=ws.valid_mask_tmp)
-        ws.valid_mask.logical_and_(ws.valid_mask_tmp)
-        torch.lt(ws.rel_y, half_size, out=ws.valid_mask_tmp)
+        # X pass: compute col indices and the first part of the valid mask.
+        torch.sub(lidar_hits_w[..., 0], env_origins[:, 0].unsqueeze(1), out=ws.rel)
+        torch.ge(ws.rel, -half_size, out=ws.valid_mask)
+        torch.lt(ws.rel, half_size, out=ws.valid_mask_tmp)
         ws.valid_mask.logical_and_(ws.valid_mask_tmp)
 
-        torch.nan_to_num(ws.rel_x, nan=0.0, posinf=0.0, neginf=0.0, out=ws.rel_x)
-        torch.nan_to_num(ws.rel_y, nan=0.0, posinf=0.0, neginf=0.0, out=ws.rel_y)
-
-        ws.rel_x.add_(half_size)
-        ws.rel_x.mul_(index_scale)
-        ws.rel_x.floor_()
-        ws.col_idx.copy_(ws.rel_x)
+        torch.nan_to_num(ws.rel, nan=0.0, posinf=0.0, neginf=0.0, out=ws.rel)
+        ws.rel.add_(half_size)
+        ws.rel.mul_(index_scale)
+        ws.rel.floor_()
+        ws.col_idx.copy_(ws.rel)
         ws.col_idx.clamp_(0, dim - 1)
 
-        ws.rel_y.add_(half_size)
-        ws.rel_y.mul_(index_scale)
-        ws.rel_y.floor_()
-        ws.row_idx.copy_(ws.rel_y)
-        ws.row_idx.clamp_(0, dim - 1)
+        # Y pass: finish the valid mask and compute flat cell indices.
+        torch.sub(lidar_hits_w[..., 1], env_origins[:, 1].unsqueeze(1), out=ws.rel)
+        torch.ge(ws.rel, -half_size, out=ws.valid_mask_tmp)
+        ws.valid_mask.logical_and_(ws.valid_mask_tmp)
+        torch.lt(ws.rel, half_size, out=ws.valid_mask_tmp)
+        ws.valid_mask.logical_and_(ws.valid_mask_tmp)
 
-        ws.flat_cell_idx.copy_(ws.row_idx)
+        torch.nan_to_num(ws.rel, nan=0.0, posinf=0.0, neginf=0.0, out=ws.rel)
+        ws.rel.add_(half_size)
+        ws.rel.mul_(index_scale)
+        ws.rel.floor_()
+
+        ws.flat_cell_idx.copy_(ws.rel)
+        ws.flat_cell_idx.clamp_(0, dim - 1)
         ws.flat_cell_idx.mul_(dim)
         ws.flat_cell_idx.add_(ws.col_idx)
 
-        ws.hit_values.zero_()
-        ws.hit_values.masked_fill_(ws.valid_mask, 1.0)
+        # Use the scratch buffer as the hit indicator source (0/1) to avoid per-step allocations.
+        ws.rel.zero_()
+        ws.rel.masked_fill_(ws.valid_mask, 1.0)
         ws.hit_map_flat.zero_()
         ws.hit_map_flat.scatter_reduce_(
-            1, ws.flat_cell_idx, ws.hit_values, reduce="amax", include_self=False
+            1, ws.flat_cell_idx, ws.rel, reduce="amax", include_self=False
         )
 
         staleness_flat = self.staleness_maps.view(self.num_envs, dim * dim)

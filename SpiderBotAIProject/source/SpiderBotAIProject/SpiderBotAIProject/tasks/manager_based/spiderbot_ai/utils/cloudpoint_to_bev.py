@@ -130,26 +130,18 @@ class BEVWorkspaceBuilder:
         )
 
         self.grid_x = torch.zeros((b, p), device=self.device, dtype=torch.long)
-        self.grid_y = torch.zeros((b, p), device=self.device, dtype=torch.long)
         self.linear_idx = torch.zeros((b, p), device=self.device, dtype=torch.long)
-        self.global_idx = torch.zeros((b, p), device=self.device, dtype=torch.long)
 
         self.valid_mask = torch.zeros((b, p), device=self.device, dtype=torch.bool)
         self.valid_mask_tmp = torch.zeros((b, p), device=self.device, dtype=torch.bool)
-        self.valid_weight = torch.zeros((b, p), device=self.device, dtype=self.dtype)
 
         self.tmp_x = torch.zeros((b, p), device=self.device, dtype=self.dtype)
         self.tmp_y = torch.zeros((b, p), device=self.device, dtype=self.dtype)
-        self.z_for_max = torch.zeros((b, p), device=self.device, dtype=self.dtype)
-        self.z_for_sum = torch.zeros((b, p), device=self.device, dtype=self.dtype)
 
         self.max_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
         self.sum_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
         self.count_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
-        self.divisor_buf = torch.zeros((b * c,), device=self.device, dtype=self.dtype)
         self.count_nonzero = torch.zeros((b * c,), device=self.device, dtype=torch.bool)
-
-        self.tmp_bev = torch.zeros((b, len(self.channels), self.height_cells, self.width_cells), device=self.device)
 
         # Reused for world->ego transform.
         self.ego_points = torch.zeros((b, p, 3), device=self.device, dtype=self.dtype)
@@ -216,43 +208,36 @@ def build_bev_inplace(
     builder.tmp_y.sub_(y_min)
     builder.tmp_y.mul_(inv_resolution)
     builder.tmp_y.floor_()
-    builder.grid_y.copy_(builder.tmp_y)
-    builder.grid_y.clamp_(0, builder.height_cells - 1)
-
-    builder.linear_idx.copy_(builder.grid_y)
+    builder.linear_idx.copy_(builder.tmp_y)
+    builder.linear_idx.clamp_(0, builder.height_cells - 1)
     builder.linear_idx.mul_(builder.width_cells)
     builder.linear_idx.add_(builder.grid_x)
+    builder.linear_idx.add_(builder.batch_offsets)
 
-    builder.global_idx.copy_(builder.linear_idx)
-    builder.global_idx.add_(builder.batch_offsets)
+    # Reuse tmp_x/tmp_y as sources for count / sum / max.
+    builder.tmp_x.zero_()
+    builder.tmp_x.masked_fill_(builder.valid_mask, 1.0)
 
-    builder.valid_weight.zero_()
-    builder.valid_weight.masked_fill_(builder.valid_mask, 1.0)
-
-    builder.z_for_max.copy_(z_values)
-    builder.z_for_max.masked_fill_(~builder.valid_mask, z_min)
-    builder.z_for_sum.copy_(z_values)
-    builder.z_for_sum.mul_(builder.valid_weight)
-
-    flat_idx = builder.global_idx.view(-1)
-    flat_z_for_max = builder.z_for_max.view(-1)
-    flat_z_for_sum = builder.z_for_sum.view(-1)
-    flat_valid_weight = builder.valid_weight.view(-1)
+    flat_idx = builder.linear_idx.view(-1)
 
     builder.max_buf.fill_(z_min)
-    builder.max_buf.scatter_reduce_(0, flat_idx, flat_z_for_max, reduce="amax", include_self=True)
+    builder.tmp_y.copy_(z_values)
+    builder.tmp_y.masked_fill_(~builder.valid_mask, z_min)
+    builder.max_buf.scatter_reduce_(0, flat_idx, builder.tmp_y.view(-1), reduce="amax", include_self=True)
 
     builder.sum_buf.zero_()
-    builder.sum_buf.scatter_add_(0, flat_idx, flat_z_for_sum)
+    builder.tmp_y.copy_(z_values)
+    builder.tmp_y.masked_fill_(~builder.valid_mask, 0.0)
+    builder.sum_buf.scatter_add_(0, flat_idx, builder.tmp_y.view(-1))
 
     builder.count_buf.zero_()
-    builder.count_buf.scatter_add_(0, flat_idx, flat_valid_weight)
+    builder.count_buf.scatter_add_(0, flat_idx, builder.tmp_x.view(-1))
 
     z_span_inv = 1.0 / max(1e-6, (z_max - z_min))
     density_divisor = max(1.0, density_normalization or builder.density_normalization)
 
     for channel_index, channel_name in enumerate(builder.channels):
-        channel_view = builder.tmp_bev[:, channel_index, :, :]
+        channel_view = out[:, channel_index, :, :]
 
         if channel_name == "max_height":
             channel_view.copy_(builder.max_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
@@ -260,9 +245,7 @@ def build_bev_inplace(
             channel_view.mul_(z_span_inv)
         elif channel_name == "mean_height":
             channel_view.copy_(builder.sum_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
-            builder.divisor_buf.copy_(builder.count_buf)
-            builder.divisor_buf.clamp_(min=1.0)
-            channel_view.div_(builder.divisor_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
+            channel_view.div_(builder.count_buf.view(builder.batch_size, builder.height_cells, builder.width_cells))
             torch.gt(builder.count_buf, 0.0, out=builder.count_nonzero)
             channel_view.masked_fill_(
                 ~builder.count_nonzero.view(builder.batch_size, builder.height_cells, builder.width_cells),
@@ -277,7 +260,6 @@ def build_bev_inplace(
         else:
             raise ValueError(f"Unknown channel name: {channel_name}")
 
-    out.copy_(builder.tmp_bev)
     return out
 
 
