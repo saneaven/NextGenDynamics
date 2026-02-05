@@ -69,10 +69,42 @@ if "--local_rank" not in parser._option_string_actions and "--local-rank" not in
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
 
+
+def _normalize_kit_args(raw_kit_args: str | list[str] | tuple[str, ...] | None) -> str:
+    if raw_kit_args is None:
+        return ""
+    if isinstance(raw_kit_args, str):
+        return raw_kit_args.strip()
+    return " ".join(str(arg).strip() for arg in raw_kit_args if str(arg).strip())
+
+
+def _extract_token_value(kit_args: str, token: str) -> str | None:
+    prefix = f"--{token}="
+    for token_arg in kit_args.split():
+        if token_arg.startswith(prefix):
+            return token_arg.split("=", 1)[1]
+    return None
+
+
 # In distributed runs, force AppLauncher to pick the correct GPU per-rank before Kit starts.
 if args_cli.distributed:
     local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
     args_cli.device = f"cuda:{local_rank}"
+    kit_args = _normalize_kit_args(getattr(args_cli, "kit_args", None))
+    kit_data_token = "/app/tokens/data"
+    kit_data_path = _extract_token_value(kit_args, kit_data_token) if kit_args else None
+
+    if kit_data_token not in kit_args:
+        kit_data_path = f"/tmp/isaac-kit-data/rank{local_rank}"
+        os.makedirs(kit_data_path, exist_ok=True)
+        injected_kit_arg = f"--{kit_data_token}={kit_data_path}"
+        kit_args = f"{kit_args} {injected_kit_arg}".strip()
+
+    args_cli.kit_args = kit_args
+    print(
+        f"[INFO][startup] local_rank={local_rank} device={args_cli.device} "
+        f"kit_data_path={kit_data_path or 'user-managed'} kit_args={kit_args!r}"
+    )
 
 # always enable cameras to record video
 if args_cli.video:

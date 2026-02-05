@@ -139,7 +139,7 @@ class RewardsCfg:
     # NOTE: We keep rewards unscaled in mdp functions and apply scaling here via manager weights.
     #       This keeps the RewardManager table meaningful and avoids hiding scales inside env.cfg.* fields.
     life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
-    progress = RewTerm(func=mdp.progress_reward, weight=5.0e3)
+    progress = RewTerm(func=mdp.progress_reward, weight=1.0e4)
     velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=2.5e2)
     reach_target = RewTerm(func=mdp.reach_target_reward, weight=1.0e5)
 
