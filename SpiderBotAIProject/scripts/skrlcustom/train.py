@@ -25,25 +25,37 @@ _SPIDERBOT_PHYSICAL_LOCAL_RANK: int | None = None
 if os.environ.get("SPIDERBOT_NO_GPU_ISOLATION", "0").lower() not in ("1", "true", "yes"):
     local_rank_env = os.environ.get("LOCAL_RANK")
     world_size_env = os.environ.get("WORLD_SIZE")
+    local_world_size_env = os.environ.get("LOCAL_WORLD_SIZE")
     if local_rank_env is not None and world_size_env is not None:
         try:
             _local_rank = int(local_rank_env)
             _world_size = int(world_size_env)
+            _local_world_size = int(local_world_size_env) if local_world_size_env is not None else None
         except ValueError:
             _local_rank = None
             _world_size = None
+            _local_world_size = None
 
         if _local_rank is not None and _world_size is not None and _world_size > 1:
             _SPIDERBOT_PHYSICAL_LOCAL_RANK = _local_rank
 
             if _ORIGINAL_CUDA_VISIBLE_DEVICES:
                 candidates = [item.strip() for item in _ORIGINAL_CUDA_VISIBLE_DEVICES.split(",") if item.strip()]
-                if 0 <= _local_rank < len(candidates):
-                    os.environ["CUDA_VISIBLE_DEVICES"] = candidates[_local_rank]
-                else:
-                    os.environ["CUDA_VISIBLE_DEVICES"] = str(_local_rank)
+                required_devices = _local_world_size if _local_world_size is not None else _world_size
+                if len(candidates) < required_devices:
+                    raise RuntimeError(
+                        "CUDA_VISIBLE_DEVICES has fewer entries than the number of local DDP processes. "
+                        f"CUDA_VISIBLE_DEVICES={_ORIGINAL_CUDA_VISIBLE_DEVICES!r} "
+                        f"LOCAL_WORLD_SIZE={local_world_size_env!r} WORLD_SIZE={world_size_env!r}"
+                    )
+                os.environ["CUDA_VISIBLE_DEVICES"] = candidates[_local_rank]
             else:
                 os.environ["CUDA_VISIBLE_DEVICES"] = str(_local_rank)
+
+            # skrl reads LOCAL_RANK at import time and calls torch.cuda.set_device(LOCAL_RANK).
+            # After restricting visibility to a single GPU, the only valid ordinal is 0.
+            os.environ["SPIDERBOT_PHYSICAL_LOCAL_RANK"] = str(_local_rank)
+            os.environ["LOCAL_RANK"] = "0"
 
             _SPIDERBOT_GPU_ISOLATION = True
 
@@ -121,20 +133,25 @@ def _extract_token_value(kit_args: str, token: str) -> str | None:
 # In distributed runs, force AppLauncher to pick the correct GPU per-rank before Kit starts.
 if args_cli.distributed:
     local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
+    physical_local_rank = (
+        _SPIDERBOT_PHYSICAL_LOCAL_RANK
+        if _SPIDERBOT_GPU_ISOLATION and _SPIDERBOT_PHYSICAL_LOCAL_RANK is not None
+        else local_rank
+    )
     args_cli.device = "cuda:0" if _SPIDERBOT_GPU_ISOLATION else f"cuda:{local_rank}"
     kit_args = _normalize_kit_args(getattr(args_cli, "kit_args", None))
     kit_data_token = "/app/tokens/data"
     kit_data_path = _extract_token_value(kit_args, kit_data_token) if kit_args else None
 
     if kit_data_token not in kit_args:
-        kit_data_path = f"/tmp/isaac-kit-data/rank{local_rank}"
+        kit_data_path = f"/tmp/isaac-kit-data/rank{physical_local_rank}"
         os.makedirs(kit_data_path, exist_ok=True)
         injected_kit_arg = f"--{kit_data_token}={kit_data_path}"
         kit_args = f"{kit_args} {injected_kit_arg}".strip()
 
     args_cli.kit_args = kit_args
     print(
-        f"[INFO][startup] local_rank={local_rank} device={args_cli.device} "
+        f"[INFO][startup] local_rank={local_rank} physical_local_rank={physical_local_rank} device={args_cli.device} "
         f"gpu_isolation={_SPIDERBOT_GPU_ISOLATION} cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES')!r} "
         f"kit_data_path={kit_data_path or 'user-managed'} kit_args={kit_args!r}"
     )
