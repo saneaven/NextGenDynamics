@@ -15,6 +15,38 @@ import argparse
 import os
 import sys
 
+# In distributed runs, ensure each worker only "sees" its assigned GPU.
+# This must happen before importing Isaac Sim / Kit (AppLauncher) so GPU selection
+# doesn't create a context on the wrong device.
+_ORIGINAL_CUDA_VISIBLE_DEVICES = os.environ.get("CUDA_VISIBLE_DEVICES")
+_SPIDERBOT_GPU_ISOLATION = False
+_SPIDERBOT_PHYSICAL_LOCAL_RANK: int | None = None
+
+if os.environ.get("SPIDERBOT_NO_GPU_ISOLATION", "0").lower() not in ("1", "true", "yes"):
+    local_rank_env = os.environ.get("LOCAL_RANK")
+    world_size_env = os.environ.get("WORLD_SIZE")
+    if local_rank_env is not None and world_size_env is not None:
+        try:
+            _local_rank = int(local_rank_env)
+            _world_size = int(world_size_env)
+        except ValueError:
+            _local_rank = None
+            _world_size = None
+
+        if _local_rank is not None and _world_size is not None and _world_size > 1:
+            _SPIDERBOT_PHYSICAL_LOCAL_RANK = _local_rank
+
+            if _ORIGINAL_CUDA_VISIBLE_DEVICES:
+                candidates = [item.strip() for item in _ORIGINAL_CUDA_VISIBLE_DEVICES.split(",") if item.strip()]
+                if 0 <= _local_rank < len(candidates):
+                    os.environ["CUDA_VISIBLE_DEVICES"] = candidates[_local_rank]
+                else:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = str(_local_rank)
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(_local_rank)
+
+            _SPIDERBOT_GPU_ISOLATION = True
+
 from isaaclab.app import AppLauncher
 
 # add argparse arguments
@@ -89,7 +121,7 @@ def _extract_token_value(kit_args: str, token: str) -> str | None:
 # In distributed runs, force AppLauncher to pick the correct GPU per-rank before Kit starts.
 if args_cli.distributed:
     local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
-    args_cli.device = f"cuda:{local_rank}"
+    args_cli.device = "cuda:0" if _SPIDERBOT_GPU_ISOLATION else f"cuda:{local_rank}"
     kit_args = _normalize_kit_args(getattr(args_cli, "kit_args", None))
     kit_data_token = "/app/tokens/data"
     kit_data_path = _extract_token_value(kit_args, kit_data_token) if kit_args else None
@@ -103,6 +135,7 @@ if args_cli.distributed:
     args_cli.kit_args = kit_args
     print(
         f"[INFO][startup] local_rank={local_rank} device={args_cli.device} "
+        f"gpu_isolation={_SPIDERBOT_GPU_ISOLATION} cuda_visible_devices={os.environ.get('CUDA_VISIBLE_DEVICES')!r} "
         f"kit_data_path={kit_data_path or 'user-managed'} kit_args={kit_args!r}"
     )
 
@@ -181,7 +214,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     created_process_group = False
     if args_cli.distributed:
         local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
-        torch.cuda.set_device(local_rank)
+        torch.cuda.set_device(0 if _SPIDERBOT_GPU_ISOLATION else local_rank)
         import torch.distributed as dist  # noqa: PLC0415
 
         if not dist.is_initialized():
