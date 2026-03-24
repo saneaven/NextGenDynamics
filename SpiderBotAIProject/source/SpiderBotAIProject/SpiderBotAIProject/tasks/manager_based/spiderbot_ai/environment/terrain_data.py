@@ -184,11 +184,18 @@ class TerrainData:
 
         return out_xy
 
-    def sample_target(self, anchor_pos_w: torch.Tensor, cfg) -> torch.Tensor:
-        """Sample obstacle-avoiding target positions around anchors.
+    def sample_target(self, anchor_pos_w: torch.Tensor, cfg) -> tuple[torch.Tensor, torch.Tensor, np.ndarray]:
+        """Sample target positions with pathfinding validation.
+
+        Each candidate must pass bounds, obstacle collision, AND BFS
+        reachability from the anchor before being accepted.
 
         Returns:
-            (N, 3) target positions with Z at terrain height + offset.
+            positions: (N, 3) target positions with Z at terrain height + offset.
+            valid: (N,) bool tensor — False for environments where no reachable target was found.
+            distance_fields: (N, nav_rows, nav_cols) numpy float32 BFS distance fields.
+                             Valid environments contain the distance field from their target;
+                             invalid environments contain inf.
         """
         n = anchor_pos_w.shape[0]
         anchor_xy = anchor_pos_w[:, :2]
@@ -200,6 +207,10 @@ class TerrainData:
 
         out_xy = anchor_xy.clone()
         valid = torch.zeros(n, device=self.device, dtype=torch.bool)
+        fields = np.full((n, self.nav_rows, self.nav_cols), np.inf, dtype=np.float32)
+
+        anchor_xy_np = anchor_xy.detach().cpu().numpy()
+        nav_res = self.nav_meter_per_grid
 
         attempts = int(cfg.target_sample_attempts)
         for _ in range(attempts):
@@ -221,14 +232,36 @@ class TerrainData:
                 & (cand_xy[:, 1] <= y_max)
             )
             not_collide = ~self.collides(cand_xy, margin=float(cfg.target_obstacle_margin))
-            ok = in_bounds & not_collide
+            geom_ok = in_bounds & not_collide
 
-            ok_ids = remaining[ok]
-            out_xy[ok_ids] = cand_xy[ok]
-            valid[ok_ids] = True
+            if not geom_ok.any():
+                continue
+
+            # BFS for geometry-ok candidates to check reachability from anchor
+            geom_ok_local = geom_ok.nonzero(as_tuple=False).squeeze(-1)
+            geom_ok_global = remaining[geom_ok_local]
+            cand_ok_xy_np = cand_xy[geom_ok_local].detach().cpu().numpy()
+
+            cand_fields = self._bfs_distance_field(cand_ok_xy_np)
+
+            # Vectorized anchor→candidate reachability check
+            geom_ok_global_np = geom_ok_global.cpu().numpy()
+            anchor_ok_xy = anchor_xy_np[geom_ok_global_np]
+            aj = np.clip(((anchor_ok_xy[:, 0] + self.size_x / 2.0) / nav_res).astype(int), 0, self.nav_cols - 1)
+            ai = np.clip(((anchor_ok_xy[:, 1] + self.size_y / 2.0) / nav_res).astype(int), 0, self.nav_rows - 1)
+            geo_dist = cand_fields[np.arange(len(ai)), ai, aj]
+            reachable = ~np.isinf(geo_dist)
+
+            for k in np.where(reachable)[0]:
+                gidx = geom_ok_global_np[k]
+                if not valid[gidx]:
+                    out_xy[gidx] = cand_xy[geom_ok_local[k]]
+                    fields[gidx] = cand_fields[k]
+                    valid[gidx] = True
 
         z = self.height_at_xy(out_xy) + float(cfg.target_z_offset)
-        return torch.cat([out_xy, z.unsqueeze(1)], dim=1)
+        positions = torch.cat([out_xy, z.unsqueeze(1)], dim=1)
+        return positions, valid, fields
 
     # ------------------------------------------------------------------
     # Pathfinding (BFS on traversability grid)

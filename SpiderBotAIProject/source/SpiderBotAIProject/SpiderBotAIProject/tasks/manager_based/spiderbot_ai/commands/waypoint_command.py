@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from concurrent.futures import Future, ThreadPoolExecutor
 
 import torch
 
@@ -53,12 +52,6 @@ class WaypointCommandTerm(CommandTerm):
         self._prev_geodesic_snapshot = torch.full((self.num_envs,), float('nan'), device=self.device)
         self._pathfinding_dir_w = torch.zeros(self.num_envs, 3, device=self.device)
         self._force_respawn = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-
-        # Async BFS (prevents DDP deadlock from CPU-bound BFS blocking gradient sync)
-        self._bfs_executor = ThreadPoolExecutor(max_workers=1)
-        self._bfs_future = None
-        self._bfs_pending_env_ids = None
-        self._bfs_pending_spawn_xy = None  # for reachability check after BFS completes
 
     @property
     def command(self) -> torch.Tensor:
@@ -108,9 +101,6 @@ class WaypointCommandTerm(CommandTerm):
         target_distance = torch.linalg.norm(self.desired_pos - self.robot.data.root_pos_w, dim=1)
         self._previous_distance_snapshot = self._previous_distance.clone()
         self._previous_distance[:] = target_distance
-
-        # Apply completed async BFS results (non-blocking poll)
-        self._apply_pending_bfs()
 
         # Geodesic distance update (from precomputed distance fields)
         td = self._env.terrain_data
@@ -229,69 +219,36 @@ class WaypointCommandTerm(CommandTerm):
         """Return the geodesic distance snapshot from the previous step."""
         return self._prev_geodesic_snapshot
 
-    def _recompute_distance_field(self, env_ids):
-        """Submit async BFS for envs whose target changed. Non-blocking."""
-        # Apply any previously completed BFS first
-        self._apply_pending_bfs()
-
+    def _set_distance_field(self, env_ids_t: torch.Tensor, fields_np):
+        """Store BFS distance fields and initialize geodesic tracking."""
         td = self._env.terrain_data
-        if isinstance(env_ids, slice):
-            env_ids_t = torch.arange(self.num_envs, device=self.device)
-        else:
-            env_ids_t = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
-        if env_ids_t.numel() == 0:
-            return
-
-        # Snapshot data to CPU for the background thread (no GPU access in thread)
-        targets_xy_np = self.desired_pos[env_ids_t, :2].detach().cpu().numpy()
-        spawn_xy_np = self._env.spawn_pos_w[env_ids_t, :2].detach().cpu().numpy()
-
-        self._bfs_pending_env_ids = env_ids_t.clone()
-        self._bfs_pending_spawn_xy = spawn_xy_np
-        self._bfs_future = self._bfs_executor.submit(td._bfs_distance_field, targets_xy_np)
-
-    def _apply_pending_bfs(self):
-        """Poll for completed BFS results and apply them. Non-blocking if not done yet."""
-        if self._bfs_future is None:
-            return
-        if not self._bfs_future.done():
-            return
-
-        fields_np = self._bfs_future.result()
-        td = self._env.terrain_data
-        env_ids_t = self._bfs_pending_env_ids
-        spawn_xy_np = self._bfs_pending_spawn_xy
-
-        # Transfer results to GPU (main thread only)
-        fields_t = torch.from_numpy(fields_np).to(self.device)
         if self._distance_field is None:
             self._distance_field = torch.full(
                 (self.num_envs, td.nav_rows, td.nav_cols), float('inf'), device=self.device
             )
+        fields_t = torch.from_numpy(fields_np).to(self.device)
         self._distance_field[env_ids_t] = fields_t
 
-        # Immediately compute geodesic so prev == curr → delta = 0 (no spike)
         robot_xy = self.robot.data.root_pos_w[env_ids_t, :2]
         geo = td.geodesic_distance_at(robot_xy, fields_t)
         self._geodesic_distance[env_ids_t] = geo
         self._prev_geodesic_distance[env_ids_t] = geo
         self._prev_geodesic_snapshot[env_ids_t] = geo
 
-        # Reachability check: if robot→target is inf, mark for respawn
-        spawn_xy_t = torch.from_numpy(spawn_xy_np).to(self.device)
-        geo_dist = td.geodesic_distance_at(spawn_xy_t, fields_t)
-        unreachable = torch.isinf(geo_dist)
-        if unreachable.any():
-            self._force_respawn[env_ids_t[unreachable]] = True
-
-        self._bfs_future = None
-        self._bfs_pending_env_ids = None
-        self._bfs_pending_spawn_xy = None
-
     def _on_reached_target(self, env_ids: torch.Tensor):
         self.targets_reached[env_ids] += 1.0
         self.desired_pos[env_ids] = self.next_desired_pos[env_ids].clone()
-        self.next_desired_pos[env_ids] = self._sample_target_positions(self.desired_pos[env_ids])
+
+        # BFS for new current target
+        td = self._env.terrain_data
+        fields_np = td._bfs_distance_field(self.desired_pos[env_ids, :2].detach().cpu().numpy())
+        self._set_distance_field(env_ids, fields_np)
+
+        # Sample next target with pathfinding validation
+        next_positions, valid, _ = td.sample_target(self.desired_pos[env_ids], self._env.cfg)
+        self.next_desired_pos[env_ids] = next_positions
+        if (~valid).any():
+            self._force_respawn[env_ids[~valid]] = True
 
         self.time_since_target[env_ids] = 0.0
         new_time_outs = float(self._env.cfg.time_out_per_target) - self.targets_reached[env_ids] * float(
@@ -300,7 +257,6 @@ class WaypointCommandTerm(CommandTerm):
         self.time_outs[env_ids] = torch.clamp(new_time_outs, min=float(self._env.cfg.min_time_out))
 
         self._previous_distance[env_ids] = float('nan')
-        self._recompute_distance_field(env_ids)
 
     def _update_chase_target(self, chase_ids: torch.Tensor, dt: float):
         """Wander the chase target smoothly each step."""
@@ -425,7 +381,10 @@ class WaypointCommandTerm(CommandTerm):
         # Reset timers and distance tracking to avoid spurious progress reward spike
         self._patrol_time_since_update[final_ids] = 0.0
         self._previous_distance[final_ids] = float('nan')
-        self._recompute_distance_field(final_ids)
+        # Synchronous BFS for patrol targets
+        td = self._env.terrain_data
+        fields_np = td._bfs_distance_field(self.desired_pos[final_ids, :2].detach().cpu().numpy())
+        self._set_distance_field(final_ids, fields_np)
 
     def _resample_targets(self, env_ids):
         if isinstance(env_ids, slice):
@@ -435,11 +394,21 @@ class WaypointCommandTerm(CommandTerm):
             env_ids_t = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
             anchor = self._env.spawn_pos_w[env_ids_t]
 
-        self.desired_pos[env_ids_t] = self._sample_target_positions(anchor)
-        self.next_desired_pos[env_ids_t] = self._sample_target_positions(self.desired_pos[env_ids_t])
-        # Async BFS — reachability check runs in _apply_pending_bfs when done
-        self._recompute_distance_field(env_ids_t)
+        td = self._env.terrain_data
+        positions, valid, fields = td.sample_target(anchor, self._env.cfg)
+        self.desired_pos[env_ids_t] = positions
 
-    def _sample_target_positions(self, anchor_pos_w: torch.Tensor) -> torch.Tensor:
-        """Sample obstacle-avoiding 3D target positions around anchors."""
-        return self._env.terrain_data.sample_target(anchor_pos_w, self._env.cfg)
+        # Set distance field for valid environments
+        valid_ids = env_ids_t[valid]
+        if valid_ids.numel() > 0:
+            valid_mask = valid.cpu().numpy()
+            self._set_distance_field(valid_ids, fields[valid_mask])
+
+        # Sample next target (only need reachability check, discard distance field)
+        next_positions, next_valid, _ = td.sample_target(positions, self._env.cfg)
+        self.next_desired_pos[env_ids_t] = next_positions
+
+        # Failed environments → force respawn
+        failed = ~valid | ~next_valid
+        if failed.any():
+            self._force_respawn[env_ids_t[failed]] = True
