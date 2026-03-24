@@ -135,6 +135,13 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
                     self.sim.render()
             self.recorder_manager.record_post_reset(reset_env_ids)
 
+        # Force-respawn envs where robot is trapped (unreachable targets after 10 retries)
+        waypoint = self.command_manager.get_term("waypoint")
+        if waypoint._force_respawn.any():
+            trapped_ids = waypoint._force_respawn.nonzero(as_tuple=False).squeeze(-1)
+            waypoint._force_respawn[trapped_ids] = False
+            self._reset_idx(trapped_ids)
+
         # update commands
         self.command_manager.compute(dt=self.step_dt)
         # step interval events

@@ -42,7 +42,7 @@ def policy_observations(env) -> torch.Tensor:
             robot.data.joint_vel[:, env.robot_idx.dof_idx],
             env.action_manager.action,
             env._map_output.far_staleness,
-            torch.zeros(env.num_envs, 1, device=env.device),  # was: can_see (always zeros, preserved for model compat)
+            torch.zeros(env.num_envs, 1, device=env.device),  # placeholder (model compat)
             mode_term.command,
         ],
         dim=-1,

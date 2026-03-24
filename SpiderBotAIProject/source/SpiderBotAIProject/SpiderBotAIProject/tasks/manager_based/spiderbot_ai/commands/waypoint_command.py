@@ -45,6 +45,14 @@ class WaypointCommandTerm(CommandTerm):
         # Patrol staleness targeting
         self._patrol_time_since_update = torch.zeros(self.num_envs, device=self.device)
 
+        # Geodesic pathfinding
+        self._distance_field = None  # (num_envs, nav_rows, nav_cols) — lazy init
+        self._geodesic_distance = torch.zeros(self.num_envs, device=self.device)
+        self._prev_geodesic_distance = torch.full((self.num_envs,), float('nan'), device=self.device)
+        self._prev_geodesic_snapshot = torch.full((self.num_envs,), float('nan'), device=self.device)
+        self._pathfinding_dir_w = torch.zeros(self.num_envs, 3, device=self.device)
+        self._force_respawn = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
     @property
     def command(self) -> torch.Tensor:
         return self.desired_pos
@@ -93,6 +101,15 @@ class WaypointCommandTerm(CommandTerm):
         target_distance = torch.linalg.norm(self.desired_pos - self.robot.data.root_pos_w, dim=1)
         self._previous_distance_snapshot = self._previous_distance.clone()
         self._previous_distance[:] = target_distance
+
+        # Geodesic distance update (from precomputed distance fields)
+        td = self._env.terrain_data
+        self._prev_geodesic_snapshot = self._prev_geodesic_distance.clone()
+        self._prev_geodesic_distance[:] = self._geodesic_distance
+        if self._distance_field is not None:
+            robot_xy = self.robot.data.root_pos_w[:, :2]
+            self._geodesic_distance[:] = td.geodesic_distance_at(robot_xy, self._distance_field)
+            self._pathfinding_dir_w[:] = td.pathfinding_direction(robot_xy, self._distance_field)
 
         # Determine whether the target has been reached.
         tolerance = torch.where(
@@ -148,6 +165,9 @@ class WaypointCommandTerm(CommandTerm):
         self.reached_target[env_ids] = False
         self.per_target_timed_out[env_ids] = False
         self._previous_distance[env_ids] = float('nan')
+        self._prev_geodesic_distance[env_ids] = float('nan')
+        self._prev_geodesic_snapshot[env_ids] = float('nan')
+        self._geodesic_distance[env_ids] = 0.0
         n_reset = self.num_envs if isinstance(env_ids, slice) else len(env_ids)
         self._chase_heading[env_ids] = 2.0 * torch.pi * torch.rand(n_reset, device=self.device)
         self._patrol_time_since_update[env_ids] = float('inf')  # force update on first step
@@ -195,6 +215,31 @@ class WaypointCommandTerm(CommandTerm):
         """Return the distance snapshot from the previous step (NaN if unavailable)."""
         return self._previous_distance_snapshot
 
+    def get_previous_geodesic(self) -> torch.Tensor:
+        """Return the geodesic distance snapshot from the previous step."""
+        return self._prev_geodesic_snapshot
+
+    def _recompute_distance_field(self, env_ids):
+        """Recompute BFS distance fields for envs whose target changed."""
+        td = self._env.terrain_data
+        if isinstance(env_ids, slice):
+            targets_xy = self.desired_pos[:, :2]
+            fields = td.compute_distance_field(targets_xy)
+            self._distance_field = fields
+            self._prev_geodesic_distance[:] = float('nan')
+        else:
+            env_ids_t = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+            if env_ids_t.numel() == 0:
+                return
+            targets_xy = self.desired_pos[env_ids_t, :2]
+            fields = td.compute_distance_field(targets_xy)
+            if self._distance_field is None:
+                self._distance_field = torch.full(
+                    (self.num_envs, td.nav_rows, td.nav_cols), float('inf'), device=self.device
+                )
+            self._distance_field[env_ids_t] = fields
+            self._prev_geodesic_distance[env_ids_t] = float('nan')
+
     def _on_reached_target(self, env_ids: torch.Tensor):
         self.targets_reached[env_ids] += 1.0
         self.desired_pos[env_ids] = self.next_desired_pos[env_ids].clone()
@@ -207,6 +252,7 @@ class WaypointCommandTerm(CommandTerm):
         self.time_outs[env_ids] = torch.clamp(new_time_outs, min=float(self._env.cfg.min_time_out))
 
         self._previous_distance[env_ids] = float('nan')
+        self._recompute_distance_field(env_ids)
 
     def _update_chase_target(self, chase_ids: torch.Tensor, dt: float):
         """Wander the chase target smoothly each step."""
@@ -331,17 +377,40 @@ class WaypointCommandTerm(CommandTerm):
         # Reset timers and distance tracking to avoid spurious progress reward spike
         self._patrol_time_since_update[final_ids] = 0.0
         self._previous_distance[final_ids] = float('nan')
+        self._recompute_distance_field(final_ids)
 
     def _resample_targets(self, env_ids):
         if isinstance(env_ids, slice):
+            env_ids_t = torch.arange(self.num_envs, device=self.device)
             anchor = self._env.spawn_pos_w
-            self.desired_pos[:] = self._sample_target_positions(anchor)
-            self.next_desired_pos[:] = self._sample_target_positions(self.desired_pos)
         else:
             env_ids_t = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
             anchor = self._env.spawn_pos_w[env_ids_t]
-            self.desired_pos[env_ids_t] = self._sample_target_positions(anchor)
-            self.next_desired_pos[env_ids_t] = self._sample_target_positions(self.desired_pos[env_ids_t])
+
+        self.desired_pos[env_ids_t] = self._sample_target_positions(anchor)
+        self.next_desired_pos[env_ids_t] = self._sample_target_positions(self.desired_pos[env_ids_t])
+        self._recompute_distance_field(env_ids_t)
+
+        # Reachability check: resample unreachable targets up to 10 times
+        td = self._env.terrain_data
+        robot_xy = self._env.spawn_pos_w[env_ids_t, :2]
+        for _ in range(10):
+            geo_dist = td.geodesic_distance_at(robot_xy, self._distance_field[env_ids_t])
+            unreachable = torch.isinf(geo_dist)
+            if not unreachable.any():
+                break
+            bad_ids = env_ids_t[unreachable]
+            bad_anchor = self._env.spawn_pos_w[bad_ids]
+            self.desired_pos[bad_ids] = self._sample_target_positions(bad_anchor)
+            self.next_desired_pos[bad_ids] = self._sample_target_positions(self.desired_pos[bad_ids])
+            self._recompute_distance_field(bad_ids)
+
+        # After 10 retries, remaining unreachable envs → robot is trapped, force respawn
+        geo_dist = td.geodesic_distance_at(robot_xy, self._distance_field[env_ids_t])
+        still_unreachable = torch.isinf(geo_dist)
+        if still_unreachable.any():
+            trapped_ids = env_ids_t[still_unreachable]
+            self._force_respawn[trapped_ids] = True
 
     def _sample_target_positions(self, anchor_pos_w: torch.Tensor) -> torch.Tensor:
         """Sample obstacle-avoiding 3D target positions around anchors."""

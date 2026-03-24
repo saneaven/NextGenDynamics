@@ -228,6 +228,10 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     time_out_decrease_per_target = 0.075
     min_time_out = 1.0
 
+    # Pathfinding settings
+    nav_grid_resolution = 1.0     # BFS grid resolution (m/cell) for geodesic distance
+    robot_collision_radius = 0.3  # robot body inflation for traversability grid (m)
+
     # Reward shaping parameters (scales live in RewardsCfg weights).
     wall_close_threshold = 1.0
     wall_obstacle_height = 0.15  # min height above terrain surface to count as obstacle (m)

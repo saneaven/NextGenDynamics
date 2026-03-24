@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -77,6 +78,27 @@ class TerrainData:
 
         self.spawn_points = torch.from_numpy(spawn_points_np).to(device=device, dtype=torch.float32)
         self.obstacle_circles = torch.from_numpy(obstacle_circles_np).to(device=device, dtype=torch.float32)
+
+        # Traversability grid for BFS pathfinding (coarse resolution)
+        nav_res = float(getattr(cfg, "nav_grid_resolution", 1.0))
+        robot_radius = float(getattr(cfg, "robot_collision_radius", 0.3))
+        self.nav_meter_per_grid = nav_res
+        self.nav_cols = int(self.size_x / nav_res)
+        self.nav_rows = int(self.size_y / nav_res)
+
+        traversable = np.ones((self.nav_rows, self.nav_cols), dtype=np.bool_)
+        for obs in obstacle_circles_np:
+            ox, oy, orad = float(obs[0]), float(obs[1]), float(obs[2])
+            gj = int((ox + self.size_x / 2.0) / nav_res)
+            gi = int((oy + self.size_y / 2.0) / nav_res)
+            r_cells = int(np.ceil((orad + robot_radius) / nav_res))
+            for di in range(-r_cells, r_cells + 1):
+                for dj in range(-r_cells, r_cells + 1):
+                    ni, nj = gi + di, gj + dj
+                    if 0 <= ni < self.nav_rows and 0 <= nj < self.nav_cols:
+                        if di * di + dj * dj <= r_cells * r_cells:
+                            traversable[ni, nj] = False
+        self.traversable = traversable
 
     def height_at_xy(self, xy_w: torch.Tensor) -> torch.Tensor:
         if xy_w.shape[-1] != 2:
@@ -165,3 +187,92 @@ class TerrainData:
 
         z = self.height_at_xy(out_xy) + float(cfg.target_z_offset)
         return torch.cat([out_xy, z.unsqueeze(1)], dim=1)
+
+    # ------------------------------------------------------------------
+    # Pathfinding (BFS on traversability grid)
+    # ------------------------------------------------------------------
+
+    def _xy_to_grid(self, xy_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Convert world XY to grid (row, col) indices."""
+        gj = ((xy_w[:, 0] + self.size_x / 2.0) / self.nav_meter_per_grid).long().clamp(0, self.nav_cols - 1)
+        gi = ((xy_w[:, 1] + self.size_y / 2.0) / self.nav_meter_per_grid).long().clamp(0, self.nav_rows - 1)
+        return gi, gj
+
+    def compute_distance_field(self, target_xy: torch.Tensor) -> torch.Tensor:
+        """BFS distance field from each target position.
+
+        Args:
+            target_xy: (N, 2) world XY positions of targets.
+        Returns:
+            (N, nav_rows, nav_cols) geodesic distance in meters from each cell to target.
+        """
+        target_np = target_xy.detach().cpu().numpy()
+        n = target_np.shape[0]
+        fields = np.full((n, self.nav_rows, self.nav_cols), np.inf, dtype=np.float32)
+        nav_res = self.nav_meter_per_grid
+        neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+
+        for i in range(n):
+            tj = int((target_np[i, 0] + self.size_x / 2.0) / nav_res)
+            ti = int((target_np[i, 1] + self.size_y / 2.0) / nav_res)
+            ti = np.clip(ti, 0, self.nav_rows - 1)
+            tj = np.clip(tj, 0, self.nav_cols - 1)
+
+            dist = fields[i]
+            dist[ti, tj] = 0.0
+            queue = deque([(ti, tj)])
+
+            while queue:
+                ci, cj = queue.popleft()
+                for di, dj in neighbors:
+                    ni, nj = ci + di, cj + dj
+                    if 0 <= ni < self.nav_rows and 0 <= nj < self.nav_cols and self.traversable[ni, nj]:
+                        step_cost = 1.4142 if (di != 0 and dj != 0) else 1.0
+                        new_dist = dist[ci, cj] + step_cost * nav_res
+                        if new_dist < dist[ni, nj]:
+                            dist[ni, nj] = new_dist
+                            queue.append((ni, nj))
+
+        return torch.from_numpy(fields).to(self.device)
+
+    def geodesic_distance_at(self, xy_w: torch.Tensor, distance_field: torch.Tensor) -> torch.Tensor:
+        """Look up geodesic distance at world positions from precomputed distance fields.
+
+        Args:
+            xy_w: (N, 2) world XY positions.
+            distance_field: (N, nav_rows, nav_cols) precomputed fields.
+        Returns:
+            (N,) geodesic distances in meters.
+        """
+        gi, gj = self._xy_to_grid(xy_w)
+        return distance_field[torch.arange(xy_w.shape[0], device=self.device), gi, gj]
+
+    def pathfinding_direction(self, xy_w: torch.Tensor, distance_field: torch.Tensor) -> torch.Tensor:
+        """Compute next-move direction by following the distance field gradient.
+
+        Args:
+            xy_w: (N, 2) world XY positions (robot positions).
+            distance_field: (N, nav_rows, nav_cols) precomputed fields.
+        Returns:
+            (N, 3) unit direction vectors in world frame (z=0).
+        """
+        gi, gj = self._xy_to_grid(xy_w)
+        n = xy_w.shape[0]
+        arange = torch.arange(n, device=self.device)
+
+        best_dir = torch.zeros(n, 2, device=self.device)
+        best_dist = distance_field[arange, gi, gj].clone()
+
+        for di, dj in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+            ni = (gi + di).clamp(0, self.nav_rows - 1)
+            nj = (gj + dj).clamp(0, self.nav_cols - 1)
+            neighbor_dist = distance_field[arange, ni, nj]
+            better = neighbor_dist < best_dist
+            if better.any():
+                best_dir[better, 0] = float(dj)  # dj -> x direction
+                best_dir[better, 1] = float(di)  # di -> y direction
+                best_dist[better] = neighbor_dist[better]
+
+        norm = best_dir.norm(dim=1, keepdim=True).clamp(min=1e-6)
+        best_dir = best_dir / norm
+        return torch.cat([best_dir, torch.zeros(n, 1, device=self.device)], dim=1)

@@ -35,16 +35,17 @@ def life_time_reward(env) -> torch.Tensor:
 
 def progress_reward(env) -> torch.Tensor:
     waypoint = env.command_manager.get_term("waypoint")
-    robot = env.scene.articulations["robot"]
 
-    target_distance = torch.linalg.norm(waypoint.desired_pos - robot.data.root_pos_w, dim=1)
-    previous_distance = waypoint.get_previous_distance()
+    prev_geo = waypoint.get_previous_geodesic()
+    curr_geo = waypoint._geodesic_distance
 
-    # Instantaneous step-to-step delta: positive = approaching target
-    delta = previous_distance - target_distance
+    # Geodesic step-to-step delta: positive = approaching target via valid path
+    delta = prev_geo - curr_geo
     delta = torch.nan_to_num(delta, nan=0.0)  # First step after reset → 0
     # Zero out on target-transition step to avoid spike from mismatched targets
     delta = torch.where(waypoint.reached_target, torch.zeros_like(delta), delta)
+    # Unreachable targets (inf distance) → no progress signal
+    delta = torch.where(torch.isinf(prev_geo) | torch.isinf(curr_geo), torch.zeros_like(delta), delta)
 
     progress = delta * ((waypoint.targets_reached * 0.25) + 1.0)
     progress = torch.sign(progress) * torch.log1p(progress.abs())
@@ -56,11 +57,10 @@ def velocity_alignment_reward(env) -> torch.Tensor:
     waypoint = env.command_manager.get_term("waypoint")
     robot = env.scene.articulations["robot"]
 
-    relative_target_pos_w = waypoint.desired_pos - robot.data.root_pos_w
-    distance = torch.linalg.norm(relative_target_pos_w, dim=1, keepdim=True)
-    target_unit_vector_w = relative_target_pos_w / (distance + 1e-6)
+    # Use pathfinding direction (wall-aware) instead of straight-line to target
+    pathfind_dir_w = waypoint._pathfinding_dir_w[:, :2]
     velocity_alignment = torch.nn.functional.cosine_similarity(
-        robot.data.root_lin_vel_w[:, :2], target_unit_vector_w[:, :2], dim=1
+        robot.data.root_lin_vel_w[:, :2], pathfind_dir_w, dim=1
     )
 
     return velocity_alignment * _mode_scale(env, "velocity_alignment") * env.step_dt
