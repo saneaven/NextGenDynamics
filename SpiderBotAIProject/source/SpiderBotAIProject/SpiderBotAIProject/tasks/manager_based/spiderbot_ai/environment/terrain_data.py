@@ -5,11 +5,12 @@
 
 from __future__ import annotations
 
-from collections import deque
 from pathlib import Path
 
 import numpy as np
 import torch
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import dijkstra
 from pxr import Usd, UsdGeom
 
 from ..custom_terrain_gen.custom_terrain_config import CustomTerrainCfg
@@ -99,6 +100,47 @@ class TerrainData:
                         if di * di + dj * dj <= r_cells * r_cells:
                             traversable[ni, nj] = False
         self.traversable = traversable
+        self._nav_graph = self._build_nav_graph()
+
+    def _build_nav_graph(self) -> csr_matrix:
+        """Build sparse adjacency matrix from traversability grid (once at init)."""
+        rows, cols = self.nav_rows, self.nav_cols
+        nav_res = self.nav_meter_per_grid
+
+        # Flat indices of all traversable cells
+        trav_mask = self.traversable
+        cell_i, cell_j = np.nonzero(trav_mask)
+
+        # 8-connected neighbors: (di, dj, cost)
+        directions = [
+            (-1, 0, 1.0), (1, 0, 1.0), (0, -1, 1.0), (0, 1, 1.0),
+            (-1, -1, 1.4142), (-1, 1, 1.4142), (1, -1, 1.4142), (1, 1, 1.4142),
+        ]
+
+        src_list = []
+        dst_list = []
+        weight_list = []
+
+        for di, dj, step_cost in directions:
+            ni = cell_i + di
+            nj = cell_j + dj
+            # In-bounds and traversable neighbor
+            valid = (ni >= 0) & (ni < rows) & (nj >= 0) & (nj < cols)
+            valid[valid] &= trav_mask[ni[valid], nj[valid]]
+
+            src_flat = cell_i[valid] * cols + cell_j[valid]
+            dst_flat = ni[valid] * cols + nj[valid]
+
+            src_list.append(src_flat)
+            dst_list.append(dst_flat)
+            weight_list.append(np.full(src_flat.shape[0], step_cost * nav_res, dtype=np.float32))
+
+        src_all = np.concatenate(src_list)
+        dst_all = np.concatenate(dst_list)
+        weights_all = np.concatenate(weight_list)
+
+        n_nodes = rows * cols
+        return csr_matrix((weights_all, (src_all, dst_all)), shape=(n_nodes, n_nodes))
 
     def height_at_xy(self, xy_w: torch.Tensor) -> torch.Tensor:
         if xy_w.shape[-1] != 2:
@@ -199,7 +241,7 @@ class TerrainData:
         return gi, gj
 
     def _bfs_distance_field(self, target_xy_np: np.ndarray) -> np.ndarray:
-        """Thread-safe BFS. No torch/GPU dependency — safe to call from background threads.
+        """Thread-safe shortest-path via scipy Dijkstra. No torch/GPU dependency.
 
         Args:
             target_xy_np: (N, 2) numpy array of target XY world positions.
@@ -207,32 +249,18 @@ class TerrainData:
             (N, nav_rows, nav_cols) numpy float32 array of geodesic distances.
         """
         n = target_xy_np.shape[0]
-        fields = np.full((n, self.nav_rows, self.nav_cols), np.inf, dtype=np.float32)
         nav_res = self.nav_meter_per_grid
-        neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
 
+        # Convert target XY to flat node indices
+        source_indices = np.empty(n, dtype=np.intp)
         for i in range(n):
-            tj = int((target_xy_np[i, 0] + self.size_x / 2.0) / nav_res)
-            ti = int((target_xy_np[i, 1] + self.size_y / 2.0) / nav_res)
-            ti = np.clip(ti, 0, self.nav_rows - 1)
-            tj = np.clip(tj, 0, self.nav_cols - 1)
+            tj = int(np.clip((target_xy_np[i, 0] + self.size_x / 2.0) / nav_res, 0, self.nav_cols - 1))
+            ti = int(np.clip((target_xy_np[i, 1] + self.size_y / 2.0) / nav_res, 0, self.nav_rows - 1))
+            source_indices[i] = ti * self.nav_cols + tj
 
-            dist = fields[i]
-            dist[ti, tj] = 0.0
-            queue = deque([(ti, tj)])
+        dist_matrix = dijkstra(self._nav_graph, directed=False, indices=source_indices)
 
-            while queue:
-                ci, cj = queue.popleft()
-                for di, dj in neighbors:
-                    ni, nj = ci + di, cj + dj
-                    if 0 <= ni < self.nav_rows and 0 <= nj < self.nav_cols and self.traversable[ni, nj]:
-                        step_cost = 1.4142 if (di != 0 and dj != 0) else 1.0
-                        new_dist = dist[ci, cj] + step_cost * nav_res
-                        if new_dist < dist[ni, nj]:
-                            dist[ni, nj] = new_dist
-                            queue.append((ni, nj))
-
-        return fields
+        return dist_matrix.reshape(n, self.nav_rows, self.nav_cols).astype(np.float32)
 
     def compute_distance_field(self, target_xy: torch.Tensor) -> torch.Tensor:
         """BFS distance field (blocking convenience wrapper).
