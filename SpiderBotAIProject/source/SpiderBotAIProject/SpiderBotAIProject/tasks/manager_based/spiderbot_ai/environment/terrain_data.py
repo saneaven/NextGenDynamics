@@ -198,23 +198,22 @@ class TerrainData:
         gi = ((xy_w[:, 1] + self.size_y / 2.0) / self.nav_meter_per_grid).long().clamp(0, self.nav_rows - 1)
         return gi, gj
 
-    def compute_distance_field(self, target_xy: torch.Tensor) -> torch.Tensor:
-        """BFS distance field from each target position.
+    def _bfs_distance_field(self, target_xy_np: np.ndarray) -> np.ndarray:
+        """Thread-safe BFS. No torch/GPU dependency — safe to call from background threads.
 
         Args:
-            target_xy: (N, 2) world XY positions of targets.
+            target_xy_np: (N, 2) numpy array of target XY world positions.
         Returns:
-            (N, nav_rows, nav_cols) geodesic distance in meters from each cell to target.
+            (N, nav_rows, nav_cols) numpy float32 array of geodesic distances.
         """
-        target_np = target_xy.detach().cpu().numpy()
-        n = target_np.shape[0]
+        n = target_xy_np.shape[0]
         fields = np.full((n, self.nav_rows, self.nav_cols), np.inf, dtype=np.float32)
         nav_res = self.nav_meter_per_grid
         neighbors = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
 
         for i in range(n):
-            tj = int((target_np[i, 0] + self.size_x / 2.0) / nav_res)
-            ti = int((target_np[i, 1] + self.size_y / 2.0) / nav_res)
+            tj = int((target_xy_np[i, 0] + self.size_x / 2.0) / nav_res)
+            ti = int((target_xy_np[i, 1] + self.size_y / 2.0) / nav_res)
             ti = np.clip(ti, 0, self.nav_rows - 1)
             tj = np.clip(tj, 0, self.nav_cols - 1)
 
@@ -233,6 +232,15 @@ class TerrainData:
                             dist[ni, nj] = new_dist
                             queue.append((ni, nj))
 
+        return fields
+
+    def compute_distance_field(self, target_xy: torch.Tensor) -> torch.Tensor:
+        """BFS distance field (blocking convenience wrapper).
+
+        For non-blocking usage, call compute_distance_field_cpu directly.
+        """
+        target_np = target_xy.detach().cpu().numpy()
+        fields = self._bfs_distance_field(target_np)
         return torch.from_numpy(fields).to(self.device)
 
     def geodesic_distance_at(self, xy_w: torch.Tensor, distance_field: torch.Tensor) -> torch.Tensor:
