@@ -55,7 +55,7 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
     )
 
     height_scanner: RayCasterCfg = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/body",
+        prim_path="{ENV_REGEX_NS}/Robot/base_link",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.04, size=[2.52, 2.52]),  # type: ignore
@@ -64,7 +64,7 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
     )
 
     lidar_sensor: RayCasterCfg = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/body",
+        prim_path="{ENV_REGEX_NS}/Robot/base_link",
         update_period=1 / 60,
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 0.0)),
         mesh_prim_paths=["/World/terrain"],
@@ -127,14 +127,14 @@ class ObservationsCfg:
 class RewardsCfg:
     """Reward terms (each computes inline from sensors/robot data)."""
     life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
-    progress = RewTerm(func=mdp.progress_reward, weight=1.0e4)
+    progress = RewTerm(func=mdp.progress_reward, weight=2.5e4)
     velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e2)
     reach_target = RewTerm(func=mdp.reach_target_reward, weight=5.0e2)
     death_penalty = RewTerm(func=mdp.death_penalty, weight=-3.0e2)
     feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=-5.0e1)
     jump_penalty = RewTerm(func=mdp.jump_penalty, weight=-3.0e2)
     body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=-15.0)
-    speed = RewTerm(func=mdp.speed_reward, weight=5.0e1)
+    speed = RewTerm(func=mdp.speed_reward, weight=1.0e2)
     body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=-3.0)
     dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=-0.25)
     dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=-2.5e-4)
@@ -150,7 +150,7 @@ class RewardsCfg:
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=5.0e2)
 
-    stillness = RewTerm(func=mdp.stillness_penalty, weight=-7.5e2)
+    stillness = RewTerm(func=mdp.stillness_penalty, weight=-1.0e3)
 
 
 @configclass
@@ -189,9 +189,9 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     # --- Task parameters ---
     episode_length_s = 60.0
 
-    base_name = "body"
-    foot_names = "leg_foot_.*"
-    undesired_contact_body_names = "body|leg_upper_.*|leg_middle_.*|leg_lower_.*"
+    base_name = "base_link"
+    foot_names = "leg_.*_outer_link"
+    undesired_contact_body_names = "base_link|leg_.*_shoulder_link|leg_.*_inner_link|leg_.*_middle_link"
 
     # Commands / reset
     spawn_mode: str = "waypoint"  # "waypoint" = all WAYPOINT; "mixed" = evenly distribute 3 modes

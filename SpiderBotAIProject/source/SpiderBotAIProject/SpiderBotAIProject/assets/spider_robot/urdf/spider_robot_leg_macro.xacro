@@ -1,0 +1,182 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="body_mass" value="4.0"/>
+  <xacro:property name="shoulder_mass" value="0.15"/>
+  <xacro:property name="inner_mass" value="0.18"/>
+  <xacro:property name="middle_mass" value="0.18"/>
+  <xacro:property name="outer_mass" value="0.16"/>
+
+  <xacro:property name="body_size_x" value="0.576834"/>
+  <xacro:property name="body_size_y" value="0.510792"/>
+  <xacro:property name="body_size_z" value="0.076321"/>
+  <xacro:property name="shoulder_size_x" value="0.182447"/>
+  <xacro:property name="shoulder_size_y" value="0.084644"/>
+  <xacro:property name="shoulder_size_z" value="0.084645"/>
+  <xacro:property name="inner_size_x" value="0.528000"/>
+  <xacro:property name="inner_size_y" value="0.032601"/>
+  <xacro:property name="inner_size_z" value="0.084640"/>
+  <xacro:property name="middle_size_x" value="0.528000"/>
+  <xacro:property name="middle_size_y" value="0.032601"/>
+  <xacro:property name="middle_size_z" value="0.084640"/>
+  <xacro:property name="outer_size_x" value="0.538147"/>
+  <xacro:property name="outer_size_y" value="0.088318"/>
+  <xacro:property name="outer_size_z" value="0.097835"/>
+
+  <xacro:property name="body_inertial_xyz" value="0 0 0.006181"/>
+  <xacro:property name="shoulder_inertial_xyz" value="0.048902 0 0.032601"/>
+  <xacro:property name="inner_inertial_xyz" value="0.22168 0.0163 0"/>
+  <xacro:property name="middle_inertial_xyz" value="0.22168 -0.0163 0"/>
+  <xacro:property name="outer_inertial_xyz" value="0.226796 0.01611 -0.000166"/>
+
+  <xacro:property name="base_to_shoulder_x" value="0.245982"/>
+  <xacro:property name="base_to_shoulder_z" value="0.081401"/>
+  <xacro:property name="shoulder_to_inner_xyz" value="0.097802 0 0.032601"/>
+  <xacro:property name="inner_to_middle_xyz" value="0.443974 0 0"/>
+  <xacro:property name="middle_to_outer_xyz" value="0.443098 0 0"/>
+
+  <xacro:property name="shoulder_joint_lower" value="-1.5708"/>
+  <xacro:property name="shoulder_joint_upper" value="1.5708"/>
+  <xacro:property name="inner_joint_lower" value="-2.6180"/>
+  <xacro:property name="inner_joint_upper" value="2.6180"/>
+  <xacro:property name="pitch_joint_lower" value="-2.9671"/>
+  <xacro:property name="pitch_joint_upper" value="2.9671"/>
+  <xacro:property name="joint_effort" value="40.0"/>
+  <xacro:property name="joint_velocity" value="4.0"/>
+  <xacro:property name="joint_damping" value="0.2"/>
+  <xacro:property name="joint_friction" value="0.0"/>
+
+  <xacro:macro name="box_inertial" params="mass size_x size_y size_z origin_xyz">
+    <inertial>
+      <origin xyz="${origin_xyz}" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia
+        ixx="${mass * (size_y * size_y + size_z * size_z) / 12.0}"
+        ixy="0.0"
+        ixz="0.0"
+        iyy="${mass * (size_x * size_x + size_z * size_z) / 12.0}"
+        iyz="0.0"
+        izz="${mass * (size_x * size_x + size_y * size_y) / 12.0}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="mesh_link" params="name visual_mesh collision_mesh mass size_x size_y size_z inertial_xyz">
+    <link name="${name}">
+      <xacro:box_inertial
+        mass="${mass}"
+        size_x="${size_x}"
+        size_y="${size_y}"
+        size_z="${size_z}"
+        origin_xyz="${inertial_xyz}"/>
+
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${mesh_root}/visual/${visual_mesh}" scale="1 1 1"/>
+        </geometry>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${mesh_root}/collision/${collision_mesh}" scale="1 1 1"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="spider_leg" params="prefix mount_yaw">
+    <xacro:mesh_link
+      name="${prefix}_shoulder_link"
+      visual_mesh="shoulder_visual.obj"
+      collision_mesh="shoulder_collision.stl"
+      mass="${shoulder_mass}"
+      size_x="${shoulder_size_x}"
+      size_y="${shoulder_size_y}"
+      size_z="${shoulder_size_z}"
+      inertial_xyz="${shoulder_inertial_xyz}"/>
+
+    <xacro:mesh_link
+      name="${prefix}_inner_link"
+      visual_mesh="leg_inner_visual.obj"
+      collision_mesh="leg_inner_collision.stl"
+      mass="${inner_mass}"
+      size_x="${inner_size_x}"
+      size_y="${inner_size_y}"
+      size_z="${inner_size_z}"
+      inertial_xyz="${inner_inertial_xyz}"/>
+
+    <xacro:mesh_link
+      name="${prefix}_middle_link"
+      visual_mesh="leg_middle_visual.obj"
+      collision_mesh="leg_middle_collision.stl"
+      mass="${middle_mass}"
+      size_x="${middle_size_x}"
+      size_y="${middle_size_y}"
+      size_z="${middle_size_z}"
+      inertial_xyz="${middle_inertial_xyz}"/>
+
+    <xacro:mesh_link
+      name="${prefix}_outer_link"
+      visual_mesh="leg_outer_visual.obj"
+      collision_mesh="leg_outer_collision.stl"
+      mass="${outer_mass}"
+      size_x="${outer_size_x}"
+      size_y="${outer_size_y}"
+      size_z="${outer_size_z}"
+      inertial_xyz="${outer_inertial_xyz}"/>
+
+    <joint name="${prefix}_shoulder_yaw_joint" type="revolute">
+      <origin
+        xyz="${base_to_shoulder_x * cos(mount_yaw)} ${base_to_shoulder_x * sin(mount_yaw)} ${base_to_shoulder_z}"
+        rpy="0 0 ${mount_yaw}"/>
+      <parent link="base_link"/>
+      <child link="${prefix}_shoulder_link"/>
+      <axis xyz="0 0 1"/>
+      <limit
+        lower="${shoulder_joint_lower}"
+        upper="${shoulder_joint_upper}"
+        effort="${joint_effort}"
+        velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <joint name="${prefix}_inner_pitch_joint" type="revolute">
+      <origin xyz="${shoulder_to_inner_xyz}" rpy="0 0 0"/>
+      <parent link="${prefix}_shoulder_link"/>
+      <child link="${prefix}_inner_link"/>
+      <axis xyz="0 1 0"/>
+      <limit
+        lower="${inner_joint_lower}"
+        upper="${inner_joint_upper}"
+        effort="${joint_effort}"
+        velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <joint name="${prefix}_middle_pitch_joint" type="revolute">
+      <origin xyz="${inner_to_middle_xyz}" rpy="0 0 0"/>
+      <parent link="${prefix}_inner_link"/>
+      <child link="${prefix}_middle_link"/>
+      <axis xyz="0 1 0"/>
+      <limit
+        lower="${pitch_joint_lower}"
+        upper="${pitch_joint_upper}"
+        effort="${joint_effort}"
+        velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <joint name="${prefix}_outer_pitch_joint" type="revolute">
+      <origin xyz="${middle_to_outer_xyz}" rpy="0 0 0"/>
+      <parent link="${prefix}_middle_link"/>
+      <child link="${prefix}_outer_link"/>
+      <axis xyz="0 1 0"/>
+      <limit
+        lower="${pitch_joint_lower}"
+        upper="${pitch_joint_upper}"
+        effort="${joint_effort}"
+        velocity="${joint_velocity}"/>
+      <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+  </xacro:macro>
+</robot>

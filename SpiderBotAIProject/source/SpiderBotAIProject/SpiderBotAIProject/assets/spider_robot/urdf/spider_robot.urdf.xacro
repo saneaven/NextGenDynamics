@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot name="spider_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="mesh_root" default="../meshes"/>
+  <xacro:property name="mesh_root" value="$(arg mesh_root)"/>
+
+  <xacro:include filename="spider_robot_leg_macro.xacro"/>
+
+  <xacro:mesh_link
+    name="base_link"
+    visual_mesh="body_visual.obj"
+    collision_mesh="body_collision.stl"
+    mass="${body_mass}"
+    size_x="${body_size_x}"
+    size_y="${body_size_y}"
+    size_z="${body_size_z}"
+    inertial_xyz="${body_inertial_xyz}"/>
+
+  <xacro:spider_leg prefix="leg_01" mount_yaw="0.0"/>
+  <xacro:spider_leg prefix="leg_02" mount_yaw="${pi / 3.0}"/>
+  <xacro:spider_leg prefix="leg_03" mount_yaw="${2.0 * pi / 3.0}"/>
+  <xacro:spider_leg prefix="leg_04" mount_yaw="${pi}"/>
+  <xacro:spider_leg prefix="leg_05" mount_yaw="${4.0 * pi / 3.0}"/>
+  <xacro:spider_leg prefix="leg_06" mount_yaw="${5.0 * pi / 3.0}"/>
+</robot>
