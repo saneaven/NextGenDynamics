@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import numpy as np
 import torch
 
 from isaaclab.envs import ManagerBasedRLEnv
@@ -37,6 +38,99 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         self.spawn_pos_w = torch.zeros(cfg.scene.num_envs, 3, device=cfg.sim.device)
 
         super().__init__(cfg, render_mode=render_mode, **kwargs)
+
+    def render(self, recompute: bool = False) -> np.ndarray | None:
+        """Render with proper RTX pipeline pumping for headless video recording.
+
+        In IsaacLab 3.0, ``sim.render()`` no longer calls ``app.update()`` — that
+        is now handled by visualizers (e.g. KitVisualizer).  With ``--viz none``
+        there are no visualizers, so the Replicator render product never produces
+        frames.  This override calls ``ensure_isaac_rtx_render_update()`` (the
+        same function Camera sensors use) to pump the RTX renderer before reading
+        the annotator data.
+        """
+        if self.render_mode == "rgb_array":
+            from isaaclab_physx.renderers.isaac_rtx_renderer_utils import ensure_isaac_rtx_render_update
+
+            ensure_isaac_rtx_render_update()
+
+            # Check rendering is possible
+            has_visualizers = bool(self.sim.get_setting("/isaaclab/visualizer"))
+            if not (self.sim.has_gui or self.sim.has_offscreen_render or has_visualizers):
+                raise RuntimeError(
+                    f"Cannot render '{self.render_mode}' - no GUI and offscreen rendering not enabled."
+                    " If running headless, make sure --enable_cameras is set."
+                )
+
+            # Lazily create render product + annotator
+            if not hasattr(self, "_rgb_annotator"):
+                import omni.replicator.core as rep
+
+                # Position the camera via USD API (set_camera_view relies on an active
+                # viewport which does not exist with --viz none).
+                self._position_video_camera()
+
+                self._render_product = rep.create.render_product(
+                    self.cfg.viewer.cam_prim_path, self.cfg.viewer.resolution
+                )
+                self._rgb_annotator = rep.AnnotatorRegistry.get_annotator("rgb", device="cpu")
+                self._rgb_annotator.attach([self._render_product])
+
+                # Warm-up: pump a few frames so the renderer initialises the render product
+                import omni.kit.app
+
+                for _ in range(3):
+                    omni.kit.app.get_app().update()
+
+            rgb_data = self._rgb_annotator.get_data()
+            rgb_data = np.frombuffer(rgb_data, dtype=np.uint8).reshape(*rgb_data.shape)
+
+            if rgb_data.size == 0:
+                return np.zeros(
+                    (self.cfg.viewer.resolution[1], self.cfg.viewer.resolution[0], 3), dtype=np.uint8
+                )
+            return rgb_data[:, :, :3]
+
+        # For non-rgb_array modes, delegate to parent
+        if not self.has_rtx_sensors and not recompute:
+            self.sim.render()
+        return None
+
+    def _position_video_camera(self) -> None:
+        """Set the video-recording camera transform via USD API.
+
+        ``set_camera_view()`` from ``isaacsim.core.utils.viewports`` requires an
+        active Kit viewport which does not exist with ``--viz none``.  Instead we
+        write directly to the existing xformOp attributes on the camera prim.
+        """
+        from pxr import Gf, Usd, UsdGeom
+
+        viewer = self.cfg.viewer
+        env_index = viewer.env_index if viewer.origin_type == "env" else 0
+        env_origin = self.scene.env_origins[env_index].cpu().numpy()
+        eye = np.array(viewer.eye, dtype=np.float64) + env_origin
+        target = np.array(viewer.lookat, dtype=np.float64) + env_origin
+
+        stage = self.sim.stage
+        prim = stage.GetPrimAtPath(viewer.cam_prim_path)
+        if not prim.IsValid():
+            return
+
+        # Build camera-to-world 4x4 matrix from look-at
+        eye_gf = Gf.Vec3d(*eye.tolist())
+        target_gf = Gf.Vec3d(*target.tolist())
+        view_matrix = Gf.Matrix4d()
+        view_matrix.SetLookAt(eye_gf, target_gf, Gf.Vec3d(0, 0, 1))
+        cam_to_world = view_matrix.GetInverse()
+
+        # Replace all existing xformOps with a single transform matrix
+        # Must edit on the session layer where /OmniverseKit_Persp is authored
+        session_layer = stage.GetSessionLayer()
+        with Usd.EditContext(stage, session_layer):
+            xformable = UsdGeom.Xformable(prim)
+            xformable.ClearXformOpOrder()
+            xformable.AddTransformOp().Set(cam_to_world)
+
 
     def load_managers(self):
         # Robot body/joint/contact indices (resolved after scene is created)

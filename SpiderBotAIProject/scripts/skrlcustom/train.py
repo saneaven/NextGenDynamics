@@ -130,7 +130,6 @@ def _validate_project_cli(raw_argv: list[str], parser: argparse.ArgumentParser, 
         parser.error("--debug_vis requires --viz kit.")
 
     args_cli.visualizer = visualizers
-    args_cli.headless = False
 
 
 _strip_disallowed_app_launcher_args(parser)
