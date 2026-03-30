@@ -163,7 +163,7 @@ def _extract_token_value(kit_args: str, token: str) -> str | None:
 
 # In distributed runs, force AppLauncher to pick the correct GPU per-rank before Kit starts.
 if args_cli.distributed:
-    local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
+    local_rank = int(os.environ["LOCAL_RANK"])
     physical_local_rank = (
         _SPIDERBOT_PHYSICAL_LOCAL_RANK
         if _SPIDERBOT_GPU_ISOLATION and _SPIDERBOT_PHYSICAL_LOCAL_RANK is not None
@@ -251,7 +251,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     dist = None
     created_process_group = False
     if args_cli.distributed:
-        local_rank = int(os.environ.get("LOCAL_RANK", args_cli.local_rank))
+        local_rank = int(os.environ["LOCAL_RANK"])
         torch.cuda.set_device(0 if _SPIDERBOT_GPU_ISOLATION else local_rank)
         import torch.distributed as dist  # noqa: PLC0415
 
