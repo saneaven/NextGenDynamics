@@ -14,8 +14,9 @@ from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.envs.common import VecEnvStepReturn
 
 from .environment.debug_plot import DebugPlotRegistry
-from .environment.map_manager import MapManager, MapManagerOutput
+from .environment.map_manager import MapManager
 from .environment.robot_indices import RobotIndices
+from .environment.runtime_state import SpiderBotStateCache
 from .environment.terrain_data import TerrainData
 
 
@@ -42,50 +43,17 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         self.robot_idx = RobotIndices.from_scene(self.scene, self.cfg)
 
         # Map manager (owns staleness maps, computes BEV/height/nav)
-        self._map_manager = MapManager(
-            config=self.cfg,
-            num_envs=self.num_envs,
-            device=self.device,
-            height_scanner=self.scene.sensors["height_scanner"],
-            lidar_sensor=self.scene.sensors["lidar_sensor"],
-        )
+        self._map_manager = MapManager(config=self.cfg, num_envs=self.num_envs, device=self.device)
 
-        # Per-step output buffers (written by _compute_step_data)
-        self._map_output = MapManagerOutput(
-            nav_data=torch.zeros(self.num_envs, 1, self.cfg.nav_dim, self.cfg.nav_dim, device=self.device),
-            bev_data=torch.zeros(self.num_envs, 3, 64, 64, device=self.device),
-            height_data=torch.zeros(self.num_envs, 64, 64, device=self.device),
-            far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
-            exploration_bonus=torch.zeros(self.num_envs, device=self.device),
-            staleness_peak_world=torch.zeros(self.num_envs, 2, device=self.device),
-            staleness_peak_value=torch.zeros(self.num_envs, device=self.device),
-        )
-
-        contact_sensor = self.scene.sensors["contact_sensor"]
-        self._is_contact = torch.zeros(
-            self.num_envs,
-            contact_sensor.data.net_forces_w_history.shape[-2],
-            device=self.device,
-            dtype=torch.float32,
-        )
-        self._base_contact_time = torch.zeros(self.num_envs, device=self.device)
-
-        # EMA-smoothed XY velocity (used by stillness_penalty to reject oscillation)
-        self._smoothed_vel_xy = torch.zeros(self.num_envs, 2, device=self.device)
+        self.state_cache = SpiderBotStateCache(self, self._map_manager)
+        self.state = self.state_cache.state
+        self.state_cache.refresh()
 
         # Debug plot registry (used by --debug_plot in play.py)
         self.debug_plot = DebugPlotRegistry()
 
         # Create ObservationManager, TerminationManager, RewardManager etc.
         super().load_managers()
-
-    # ------------------------------------------------------------------
-    # step() override — based on IsaacLab 2.3.2 ManagerBasedRLEnv.step()
-    #
-    # The ONLY change is the insertion of self._compute_step_data() between
-    # the counter update and termination/reward computation.
-    # If upgrading IsaacLab, verify the parent step() hasn't changed.
-    # ------------------------------------------------------------------
 
     def step(self, action: torch.Tensor) -> VecEnvStepReturn:
         # process actions
@@ -94,7 +62,7 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         self.recorder_manager.record_pre_step()
 
         # check if we need to do rendering within the physics loop
-        is_rendering = self.sim.has_gui() or self.sim.has_rtx_sensors()
+        is_rendering = self.sim.is_rendering
 
         # perform physics stepping
         for _ in range(self.cfg.decimation):
@@ -111,7 +79,6 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
-        # *** INSERTED: compute shared per-step data before MDP ***
         self._compute_step_data()
 
         # check terminations
@@ -130,10 +97,11 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         if len(reset_env_ids) > 0:
             self.recorder_manager.record_pre_reset(reset_env_ids)
             self._reset_idx(reset_env_ids)
-            if self.sim.has_rtx_sensors() and self.cfg.num_rerenders_on_reset > 0:
+            if self.has_rtx_sensors and self.cfg.num_rerenders_on_reset > 0:
                 for _ in range(self.cfg.num_rerenders_on_reset):
                     self.sim.render()
             self.recorder_manager.record_post_reset(reset_env_ids)
+        state_was_reset = len(reset_env_ids) > 0
 
         # Force-respawn envs where robot is trapped (unreachable targets after 10 retries)
         waypoint = self.command_manager.get_term("waypoint")
@@ -141,6 +109,10 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
             trapped_ids = waypoint._force_respawn.nonzero(as_tuple=False).squeeze(-1)
             waypoint._force_respawn[trapped_ids] = False
             self._reset_idx(trapped_ids)
+            state_was_reset = True
+
+        if state_was_reset:
+            self.state_cache.refresh()
 
         # update commands
         self.command_manager.compute(dt=self.step_dt)
@@ -166,70 +138,24 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
     # ------------------------------------------------------------------
 
     def _compute_step_data(self):
-        """Compute shared per-step values after physics, before MDP managers.
-
-        This replaces the scattered ``ensure_updated()`` calls that were spread
-        across 5 fake CommandTerms and 20+ reward/obs/termination functions.
-        """
-        robot = self.scene.articulations["robot"]
-        contact_sensor = self.scene.sensors["contact_sensor"]
-
-        # 1. Mode state transitions (legitimate command — updates one-hot encoding)
+        """Compute shared per-step values after physics, before MDP managers."""
         self.command_manager.get_term("mode").ensure_updated()
-
-        # 2. Map manager (BEV, height scan, staleness, exploration bonus, staleness peak)
-        #    Runs before waypoint so patrol mode can read staleness_peak_world.
-        self._map_manager.update_into(
-            self._map_output,
-            env_origins=self.scene.env_origins,
-            robot_pos_w=robot.data.root_pos_w,
-            robot_yaw_w=robot.data.heading_w.unsqueeze(-1),
-            dt=self.step_dt,
-        )
-
-        # 2b. Register BEV channels for debug plotting (views — zero cost)
-        self.debug_plot.image("BEV max_height", self._map_output.bev_data[0, 0])
-        self.debug_plot.image("BEV mean_height", self._map_output.bev_data[0, 1])
-        self.debug_plot.image("BEV density", self._map_output.bev_data[0, 2])
-
-        # 3. Waypoint state machine (legitimate command — target reached, timeouts, patrol target)
+        self.state_cache.refresh()
+        self.debug_plot.image("BEV max_height", self.state.map.bev_data[0, 0])
+        self.debug_plot.image("BEV mean_height", self.state.map.bev_data[0, 1])
+        self.debug_plot.image("BEV density", self.state.map.bev_data[0, 2])
         self.command_manager.get_term("waypoint").ensure_updated()
-
-        # 4. Contact state (used by observations + undesired_contacts reward)
-        net_contact_forces = contact_sensor.data.net_forces_w_history
-        is_contact = torch.max(torch.norm(net_contact_forces, dim=-1), dim=1)[0] > float(self.cfg.contact_threshold)
-        self._is_contact[:] = is_contact.to(dtype=torch.float32)
-
-        # 5. Base contact time (used by death_penalty reward + on_ground termination)
-        self._base_contact_time[:] = contact_sensor.data.current_contact_time[
-            :, self.robot_idx.contact_sensor_base_ids
-        ].squeeze(-1)
-
-        # 6. Smoothed velocity for stillness penalty (EMA)
-        vel_xy = robot.data.root_lin_vel_w[:, :2]
-        alpha = 0.1
-        self._smoothed_vel_xy[:] = alpha * vel_xy + (1.0 - alpha) * self._smoothed_vel_xy
 
     # ------------------------------------------------------------------
     # Reset
     # ------------------------------------------------------------------
 
     def _reset_idx(self, env_ids: Sequence[int]):
-        # Reset cached buffers (will be recomputed on next _compute_step_data)
-        self._map_manager.reset(env_ids)
-        self._map_output.nav_data[env_ids] = 0.0
-        self._map_output.bev_data[env_ids] = 0.0
-        self._map_output.height_data[env_ids] = 0.0
-        self._map_output.far_staleness[env_ids] = 0.0
-        self._map_output.exploration_bonus[env_ids] = 0.0
-        self._map_output.staleness_peak_world[env_ids] = 0.0
-        self._map_output.staleness_peak_value[env_ids] = 0.0
-        self._is_contact[env_ids] = 0.0
-        self._base_contact_time[env_ids] = 0.0
-        self._smoothed_vel_xy[env_ids] = 0.0
+        self.state_cache.reset(env_ids)
 
         # Parent reset: scene.reset → spawn event (writes spawn_pos_w) → command_manager.reset
         super()._reset_idx(env_ids)
+        self.state_cache.refresh()
 
         # Promote waypoint metrics to Episode_Info keys (without manager prefixes)
         log = self.extras.get("log")

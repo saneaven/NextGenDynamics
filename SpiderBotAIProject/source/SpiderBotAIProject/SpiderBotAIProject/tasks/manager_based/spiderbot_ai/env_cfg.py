@@ -17,6 +17,7 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg, OffsetCfg
 from isaaclab.utils import configclass
 
 from . import mdp
@@ -75,6 +76,22 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
             horizontal_fov_range=(-180.0, 180.0),
             horizontal_res=360.0 / 129.0,
         ),
+    )
+
+    sensor_frame_transformer: FrameTransformerCfg = FrameTransformerCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        target_frames=[
+            FrameTransformerCfg.FrameCfg(
+                name="lidar_frame",
+                prim_path="{ENV_REGEX_NS}/Robot/base_link",
+                offset=OffsetCfg(pos=(0.0, 0.0, 0.0)),
+            ),
+            FrameTransformerCfg.FrameCfg(
+                name="height_scanner_frame",
+                prim_path="{ENV_REGEX_NS}/Robot/base_link",
+                offset=OffsetCfg(pos=(0.0, 0.0, 20.0)),
+            ),
+        ],
     )
 
     dome = AssetBaseCfg(

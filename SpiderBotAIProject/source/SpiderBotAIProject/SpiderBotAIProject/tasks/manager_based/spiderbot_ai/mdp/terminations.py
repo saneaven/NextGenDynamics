@@ -13,8 +13,8 @@ def per_target_time_out(env) -> torch.Tensor:
 
 
 def died(env) -> torch.Tensor:
-    return env.scene.articulations["robot"].data.projected_gravity_b[:, 2] > 0.0
+    return env.state.robot.projected_gravity_b[:, 2] > 0.0
 
 
 def on_ground(env) -> torch.Tensor:
-    return env._base_contact_time > float(env.cfg.base_on_ground_time)
+    return env.state.contact.base_contact_time > float(env.cfg.base_on_ground_time)

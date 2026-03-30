@@ -98,7 +98,7 @@ class WaypointCommandTerm(CommandTerm):
         self.time_since_target += dt * is_target_active.to(dtype=self.time_since_target.dtype)
 
         # Snapshot previous distance for progress reward, then update.
-        target_distance = torch.linalg.norm(self.desired_pos - self.robot.data.root_pos_w, dim=1)
+        target_distance = torch.linalg.norm(self.desired_pos - self._env.state.robot.root_pos_w, dim=1)
         self._previous_distance_snapshot = self._previous_distance.clone()
         self._previous_distance[:] = target_distance
 
@@ -107,7 +107,7 @@ class WaypointCommandTerm(CommandTerm):
         self._prev_geodesic_snapshot = self._prev_geodesic_distance.clone()
         self._prev_geodesic_distance[:] = self._geodesic_distance
         if self._distance_field is not None:
-            robot_xy = self.robot.data.root_pos_w[:, :2]
+            robot_xy = self._env.state.robot.root_pos_w[:, :2]
             self._geodesic_distance[:] = td.geodesic_distance_at(robot_xy, self._distance_field)
             self._pathfinding_dir_w[:] = td.pathfinding_direction(robot_xy, self._distance_field)
 
@@ -229,7 +229,7 @@ class WaypointCommandTerm(CommandTerm):
         fields_t = torch.from_numpy(fields_np).to(self.device)
         self._distance_field[env_ids_t] = fields_t
 
-        robot_xy = self.robot.data.root_pos_w[env_ids_t, :2]
+        robot_xy = self._env.state.robot.root_pos_w[env_ids_t, :2]
         geo = td.geodesic_distance_at(robot_xy, fields_t)
         self._geodesic_distance[env_ids_t] = geo
         self._prev_geodesic_distance[env_ids_t] = geo
@@ -272,7 +272,7 @@ class WaypointCommandTerm(CommandTerm):
         # 1.5. Evasion steering — bias heading away from robot.
         evasion_weight = float(cfg.chase_target_evasion_weight)
         cur_xy = self.desired_pos[chase_ids, :2]
-        robot_xy = self.robot.data.root_pos_w[chase_ids, :2]
+        robot_xy = self._env.state.robot.root_pos_w[chase_ids, :2]
         away_vec = cur_xy - robot_xy
         away_angle = torch.atan2(away_vec[:, 1], away_vec[:, 0])
         current_heading = self._chase_heading[chase_ids]
@@ -329,7 +329,7 @@ class WaypointCommandTerm(CommandTerm):
             return
 
         cfg = self._env.cfg
-        map_output = self._env._map_output
+        map_output = self._env.state.map
 
         # Increment patrol update timer
         self._patrol_time_since_update[patrol_ids] += dt
@@ -339,7 +339,7 @@ class WaypointCommandTerm(CommandTerm):
         peak_val = map_output.staleness_peak_value[patrol_ids]      # (M,)
 
         # Current distance to target
-        robot_xy = self.robot.data.root_pos_w[patrol_ids, :2]
+        robot_xy = self._env.state.robot.root_pos_w[patrol_ids, :2]
         target_xy = self.desired_pos[patrol_ids, :2]
         dist_to_target = torch.linalg.norm(target_xy - robot_xy, dim=1)
 

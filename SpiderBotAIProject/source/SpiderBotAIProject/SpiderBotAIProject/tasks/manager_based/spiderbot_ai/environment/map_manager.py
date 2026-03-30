@@ -11,9 +11,9 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn.functional as F
-from isaaclab.sensors import RayCaster
 
-from ..utils.cloudpoint_to_bev import BEVWorkspaceBuilder, build_bev_inplace, transform_world_to_ego_inplace
+from ..utils.cloudpoint_to_bev import BEVWorkspaceBuilder, build_bev_inplace
+from ..utils.geometry import transform_world_to_local_inplace
 
 
 @dataclass
@@ -51,13 +51,10 @@ class MapManagerWorkspace:
 
 
 class MapManager:
-    def __init__(self, config, num_envs, device, height_scanner: RayCaster, lidar_sensor: RayCaster):
+    def __init__(self, config, num_envs, device):
         self.device = device
         self.num_envs = num_envs
         self.config = config
-
-        self._height_scanner = height_scanner
-        self._lidar_sensor = lidar_sensor
 
         x = torch.linspace(-1, 1, self.config.staleness_dim, device=device, dtype=torch.float32)
         y = torch.linspace(-1, 1, self.config.staleness_dim, device=device, dtype=torch.float32)
@@ -72,44 +69,73 @@ class MapManager:
             self.num_envs, 1, self.config.staleness_dim, self.config.staleness_dim, device=device
         )
 
-        lidar_dtype = self._lidar_sensor.data.ray_hits_w.dtype
-        self._num_lidar_points = int(self._lidar_sensor.data.ray_hits_w.shape[1])
-        self._workspace = self._create_workspace(self._num_lidar_points)
-        self._bev_builder = BEVWorkspaceBuilder(
-            batch_size=self.num_envs,
-            num_points=self._num_lidar_points,
-            device=self.device,
-            dtype=lidar_dtype,
-            channels=("max_height", "mean_height", "density"),
-        )
-        # Only allocate a default output if callers use the legacy `update()` API.
-        # Training uses `update_into` via MapCommandTerm, so eager allocation is wasted VRAM.
+        self._num_lidar_points = 0
+        self._workspace: MapManagerWorkspace | None = None
+        self._bev_builder: BEVWorkspaceBuilder | None = None
         self._default_output: MapManagerOutput | None = None
 
-    def update(self, env_origins, robot_pos_w, robot_yaw_w, dt) -> MapManagerOutput:
-        if self._default_output is None:
-            self._default_output = MapManagerOutput(
-                nav_data=torch.zeros(self.num_envs, 1, self.config.nav_dim, self.config.nav_dim, device=self.device),
-                bev_data=torch.zeros(self.num_envs, 3, 64, 64, device=self.device),
-                height_data=torch.zeros(self.num_envs, 64, 64, device=self.device),
-                far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
-                exploration_bonus=torch.zeros(self.num_envs, device=self.device),
-                staleness_peak_world=torch.zeros(self.num_envs, 2, device=self.device),
-                staleness_peak_value=torch.zeros(self.num_envs, device=self.device),
-            )
+    def allocate_output(self) -> MapManagerOutput:
+        return MapManagerOutput(
+            nav_data=torch.zeros(self.num_envs, 1, self.config.nav_dim, self.config.nav_dim, device=self.device),
+            bev_data=torch.zeros(self.num_envs, 3, 64, 64, device=self.device),
+            height_data=torch.zeros(self.num_envs, 64, 64, device=self.device),
+            far_staleness=torch.zeros(self.num_envs, 8, device=self.device),
+            exploration_bonus=torch.zeros(self.num_envs, device=self.device),
+            staleness_peak_world=torch.zeros(self.num_envs, 2, device=self.device),
+            staleness_peak_value=torch.zeros(self.num_envs, device=self.device),
+        )
 
-        self.update_into(self._default_output, env_origins, robot_pos_w, robot_yaw_w, dt)
+    def update(
+        self,
+        *,
+        env_origins,
+        robot_pos_w,
+        robot_yaw_w,
+        lidar_hits_w,
+        lidar_pos_w,
+        lidar_yaw_quat_w,
+        height_hits_w,
+        height_scanner_pos_w,
+        dt,
+    ) -> MapManagerOutput:
+        if self._default_output is None:
+            self._default_output = self.allocate_output()
+
+        self.update_into(
+            output=self._default_output,
+            env_origins=env_origins,
+            robot_pos_w=robot_pos_w,
+            robot_yaw_w=robot_yaw_w,
+            lidar_hits_w=lidar_hits_w,
+            lidar_pos_w=lidar_pos_w,
+            lidar_yaw_quat_w=lidar_yaw_quat_w,
+            height_hits_w=height_hits_w,
+            height_scanner_pos_w=height_scanner_pos_w,
+            dt=dt,
+        )
         return self._default_output
 
-    def update_into(self, output: MapManagerOutput, env_origins, robot_pos_w, robot_yaw_w, dt) -> None:
-        lidar_hits_w = self._lidar_sensor.data.ray_hits_w
+    def update_into(
+        self,
+        *,
+        output: MapManagerOutput,
+        env_origins,
+        robot_pos_w,
+        robot_yaw_w,
+        lidar_hits_w,
+        lidar_pos_w,
+        lidar_yaw_quat_w,
+        height_hits_w,
+        height_scanner_pos_w,
+        dt,
+    ) -> None:
         self._ensure_workspace(int(lidar_hits_w.shape[1]), lidar_hits_w.dtype)
 
         self._update_staleness_map(lidar_hits_w, env_origins, dt, output.exploration_bonus)
         self._get_far_staleness(robot_pos_w, robot_yaw_w, env_origins, output.far_staleness)
         self._sample_egocentric_maps(robot_pos_w, robot_yaw_w, env_origins, output.nav_data)
-        self._compute_height_data(output.height_data)
-        self._compute_bev_data(output.bev_data)
+        self._compute_height_data(height_hits_w, height_scanner_pos_w, output.height_data)
+        self._compute_bev_data(lidar_hits_w, lidar_pos_w, lidar_yaw_quat_w, output.bev_data)
         self._compute_staleness_peak(env_origins, output)
 
     def _create_workspace(self, num_points: int) -> MapManagerWorkspace:
@@ -137,15 +163,24 @@ class MapManager:
         )
 
     def _ensure_workspace(self, num_points: int, lidar_dtype: torch.dtype) -> None:
-        if num_points != self._num_lidar_points:
+        if self._workspace is None or num_points != self._num_lidar_points:
             self._num_lidar_points = num_points
             self._workspace = self._create_workspace(num_points)
-        self._bev_builder.ensure_shape(
-            batch_size=self.num_envs,
-            num_points=num_points,
-            device=self.device,
-            dtype=lidar_dtype,
-        )
+        if self._bev_builder is None:
+            self._bev_builder = BEVWorkspaceBuilder(
+                batch_size=self.num_envs,
+                num_points=num_points,
+                device=self.device,
+                dtype=lidar_dtype,
+                channels=("max_height", "mean_height", "density"),
+            )
+        else:
+            self._bev_builder.ensure_shape(
+                batch_size=self.num_envs,
+                num_points=num_points,
+                device=self.device,
+                dtype=lidar_dtype,
+            )
 
     def _update_staleness_map(self, lidar_hits_w, env_origins, dt, output_exploration_bonus: torch.Tensor) -> None:
         """Update staleness (decay + clear seen areas) and write exploration reward."""
@@ -298,10 +333,15 @@ class MapManager:
         """Reset staleness maps for specific environments."""
         self.staleness_maps[env_ids] = 0.0
 
-    def _compute_height_data(self, output_height: torch.Tensor) -> None:
-        """Compute height scanner observation from internal sensor reference."""
-        height_scanner_pos_z = self._height_scanner.data.pos_w[:, 2].view(self.num_envs, 1, 1)
-        height_scanner_ray_hits_z = self._height_scanner.data.ray_hits_w[..., 2]
+    def _compute_height_data(
+        self,
+        height_hits_w: torch.Tensor,
+        height_scanner_pos_w: torch.Tensor,
+        output_height: torch.Tensor,
+    ) -> None:
+        """Compute height scanner observation from cached sensor state."""
+        height_scanner_pos_z = height_scanner_pos_w[:, 2].view(self.num_envs, 1, 1)
+        height_scanner_ray_hits_z = height_hits_w[..., 2]
 
         output_height.copy_(height_scanner_ray_hits_z.view(self.num_envs, 64, 64))
         output_height.mul_(-1.0)
@@ -309,19 +349,24 @@ class MapManager:
         output_height.sub_(0.5)
         output_height.clamp_(-1.0, 1.0)
 
-    def _compute_bev_data(self, output_bev: torch.Tensor) -> None:
-        """Compute BEV observation from internal LiDAR sensor reference."""
-        world_points = self._lidar_sensor.data.ray_hits_w
-        sensor_position_world = self._lidar_sensor.data.pos_w
-        sensor_quaternion_world_wxyz = self._lidar_sensor.data.quat_w
+    def _compute_bev_data(
+        self,
+        lidar_hits_w: torch.Tensor,
+        lidar_pos_w: torch.Tensor,
+        lidar_yaw_quat_w: torch.Tensor,
+        output_bev: torch.Tensor,
+    ) -> None:
+        """Compute BEV observation from cached LiDAR state."""
+        if self._bev_builder is None:
+            raise RuntimeError("BEV workspace must be initialized before computing BEV data.")
 
-        torch.nan_to_num(world_points, nan=0.0, posinf=0.0, neginf=0.0, out=self._bev_builder.ego_points)
-        transform_world_to_ego_inplace(
+        torch.nan_to_num(lidar_hits_w, nan=0.0, posinf=0.0, neginf=0.0, out=self._bev_builder.ego_points)
+        transform_world_to_local_inplace(
             self._bev_builder.ego_points,
-            sensor_position_world,
-            sensor_quaternion_world_wxyz,
+            lidar_pos_w,
+            lidar_yaw_quat_w,
             out=self._bev_builder.ego_points,
-            rotation_world_to_sensor=self._bev_builder.rotation_matrix,
+            rotation_world_to_local=self._bev_builder.rotation_matrix,
             relative_points=self._bev_builder.relative_points,
         )
         build_bev_inplace(self._bev_builder, self._bev_builder.ego_points, output_bev)

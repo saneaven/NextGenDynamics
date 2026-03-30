@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       network: host
-    image: spiderbotai-isaaclab-headless:2.3.2
+    image: spiderbotai-isaaclab-physx:3.0.0-beta1
     gpus: all
     network_mode: host
     entrypoint: ["/workspace/isaaclab/isaaclab.sh"]
@@ -29,4 +29,4 @@ services:
       - ../checkpoints:/workspace/SpiderBotAIProject/checkpoints:rw
       - ../logs:/workspace/SpiderBotAIProject/logs:rw
       - ../outputs:/workspace/SpiderBotAIProject/outputs:rw
-    command: ["-p", "scripts/skrlcustom/train.py", "--task", "SpiderBotAIProject-v0", "--headless"]
+    command: ["-p", "scripts/skrlcustom/train.py", "--task", "SpiderBotAIProject-v0", "--viz", "none"]

@@ -61,6 +61,11 @@ if os.environ.get("SPIDERBOT_NO_GPU_ISOLATION", "0").lower() not in ("1", "true"
 
 from isaaclab.app import AppLauncher
 
+ALGORITHM = "ppo"
+ML_FRAMEWORK = "torch"
+AGENT_CFG_ENTRY_POINT = "skrl_custom_cfg_entry_point"
+SUPPORTED_VISUALIZERS = {"none", "kit"}
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl (custom PPO_RNN).")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
@@ -68,34 +73,11 @@ parser.add_argument("--video_length", type=int, default=200, help="Length of the
 parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument(
-    "--agent",
-    type=str,
-    default=None,
-    help=(
-        "Name of the RL agent configuration entry point. Defaults to None, in which case the argument "
-        "--algorithm is used to determine the default agent configuration entry point."
-    ),
-)
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
-parser.add_argument(
-    "--ml_framework",
-    type=str,
-    default="torch",
-    choices=["torch"],
-    help="The ML framework used for training the skrl agent.",
-)
-parser.add_argument(
-    "--algorithm",
-    type=str,
-    default="PPO",
-    choices=["AMP", "PPO", "IPPO", "MAPPO"],
-    help="The RL algorithm used for training the skrl agent.",
-)
 parser.add_argument(
     "--debug_vis",
     action="store_true",
@@ -106,12 +88,61 @@ parser.add_argument(
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 
+
+def _strip_disallowed_app_launcher_args(parser: argparse.ArgumentParser) -> None:
+    action = parser._option_string_actions.get("--headless")
+    if action is None:
+        raise RuntimeError("Expected AppLauncher to register deprecated '--headless'.")
+    for option in tuple(action.option_strings):
+        parser._option_string_actions.pop(option, None)
+    parser._actions = [candidate for candidate in parser._actions if candidate is not action]
+    for group in parser._mutually_exclusive_groups:
+        if action in group._group_actions:
+            group._group_actions.remove(action)
+
+
+def _normalize_project_visualizer(raw_visualizer) -> list[str]:
+    if raw_visualizer is None:
+        return []
+    if isinstance(raw_visualizer, str):
+        values = [part.strip().lower() for part in raw_visualizer.split(",") if part.strip()]
+    else:
+        values = [str(part).strip().lower() for part in raw_visualizer if str(part).strip()]
+    return values
+
+
+def _validate_project_cli(raw_argv: list[str], parser: argparse.ArgumentParser, args_cli) -> None:
+    has_headless = any(arg == "--headless" or arg.startswith("--headless=") for arg in raw_argv)
+    if has_headless:
+        parser.error("--headless is not supported. Use --viz none or --viz kit.")
+
+    has_visualizer = any(
+        arg in {"--viz", "--visualizer"} or arg.startswith("--viz=") or arg.startswith("--visualizer=")
+        for arg in raw_argv
+    )
+    if not has_visualizer:
+        parser.error("--viz is required. Use --viz none or --viz kit.")
+
+    visualizers = _normalize_project_visualizer(getattr(args_cli, "visualizer", None))
+    if len(visualizers) != 1 or visualizers[0] not in SUPPORTED_VISUALIZERS:
+        parser.error("Only '--viz none' and '--viz kit' are supported.")
+    if args_cli.debug_vis and visualizers != ["kit"]:
+        parser.error("--debug_vis requires --viz kit.")
+
+    args_cli.visualizer = visualizers
+    args_cli.headless = False
+
+
+_strip_disallowed_app_launcher_args(parser)
+
 # torchrun passes `--local-rank` to each worker process. Consume it so Hydra doesn't see it.
 if "--local_rank" not in parser._option_string_actions and "--local-rank" not in parser._option_string_actions:
     parser.add_argument("--local_rank", "--local-rank", dest="local_rank", type=int, default=0, help=argparse.SUPPRESS)
 
 # parse the arguments
-args_cli, hydra_args = parser.parse_known_args()
+raw_argv = sys.argv[1:]
+args_cli, hydra_args = parser.parse_known_args(raw_argv)
+_validate_project_cli(raw_argv, parser, args_cli)
 
 
 def _normalize_kit_args(raw_kit_args: str | list[str] | tuple[str, ...] | None) -> str:
@@ -214,17 +245,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 import SpiderBotAIProject.tasks  # noqa: F401
 from SpiderBotAIProject.tasks.manager_based.spiderbot_ai.agents.skrl_custom_ppo_model import SharedRecurrentModel
 
-# config shortcuts
-algorithm = args_cli.algorithm.lower()
-if args_cli.agent is None:
-    agent_cfg_entry_point = (
-        "skrl_custom_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_custom_{algorithm}_cfg_entry_point"
-    )
-else:
-    agent_cfg_entry_point = args_cli.agent
-
-
-@hydra_task_config(args_cli.task, agent_cfg_entry_point)
+@hydra_task_config(args_cli.task, AGENT_CFG_ENTRY_POINT)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with custom skrl agent (PPO_RNN)."""
     dist = None
@@ -284,7 +305,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # specify directory for logging runs: {time-stamp}_{run_name}
     if args_cli.distributed:
         log_dir = (
-            datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
+            datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{ALGORITHM}_{ML_FRAMEWORK}"
             if is_main_process
             else None
         )
@@ -294,7 +315,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         dist.broadcast_object_list(log_dir_list, src=0)
         log_dir = log_dir_list[0]
     else:
-        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{algorithm}_{args_cli.ml_framework}"
+        log_dir = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") + f"_{ALGORITHM}_{ML_FRAMEWORK}"
         if agent_cfg["agent"]["experiment"]["experiment_name"]:
             log_dir += f'_{agent_cfg["agent"]["experiment"]["experiment_name"]}'
 
@@ -348,7 +369,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if record_video else None)
 
     # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
+    if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
 
     # wrap for video recording
@@ -366,7 +387,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     set_seed(env_cfg.seed)
 
     # wrap around environment for skrl
-    env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
+    env = SkrlVecEnvWrapper(env, ml_framework=ML_FRAMEWORK)
     device = env.device
 
     memory = RandomMemory(memory_size=agent_cfg["agent"]["rollouts"], num_envs=env.num_envs, device=device)

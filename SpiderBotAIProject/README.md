@@ -1,4 +1,4 @@
-# SpiderBotAIProject (Isaac Lab Extension)
+# SpiderBotAIProject (Isaac Lab 3.0 Beta)
 
 ## Overview
 
@@ -13,62 +13,72 @@ This repository contains the `SpiderBotAIProject` Isaac Lab extension and task i
 
 ## Installation
 
-- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html).
-  We recommend using the conda or uv installation as it simplifies calling Python scripts from the terminal.
+- Target runtime:
+  - Isaac Lab `v3.0.0-beta`
+  - Isaac Sim `6.0`
+  - Python `3.12`
+  - Ubuntu / WSL2
+  - PhysX only
 
-- Clone or copy this project/repository separately from the Isaac Lab installation (i.e. outside the `IsaacLab` directory):
+- Install Isaac Lab by following the [installation guide](https://isaac-sim.github.io/IsaacLab/develop/source/setup/installation/index.html).
 
-- Using a python interpreter that has Isaac Lab installed, install the library in editable mode:
+- Install this package in editable mode:
 
-    ```bash
-    # use 'PATH_TO_isaaclab.sh|bat -p' instead of 'python' if Isaac Lab is not installed in Python venv or conda
-    python -m pip install -e source/SpiderBotAIProject
-    ```
+  ```bash
+  python -m pip install -e source/SpiderBotAIProject
+  ```
 
-- Train (skrlcustom-only):
+- Convert the robot URDF to the Isaac Lab 3.0 importer output:
 
-    ```bash
-    python scripts/skrlcustom/train.py --task=SpiderBotAIProject-v0
-    ```
+  ```bash
+  python scripts/convert_urdf.py --skip-usd
+  PATH_TO_ISAACLAB/isaaclab.sh -p scripts/convert_urdf.py
+  ```
 
-- Note: On first run, the script generates `custom_terrain.usd` under `source/SpiderBotAIProject/SpiderBotAIProject/assets/terrains/`.
-  This requires `opensimplex` in your Isaac Sim python environment.
+- Train:
 
-- Play (skrlcustom-only):
+  ```bash
+  python scripts/skrlcustom/train.py --task SpiderBotAIProject-v0 --viz none
+  ```
 
-    ```bash
-    python scripts/skrlcustom/play.py --task=SpiderBotAIProject-v0 --checkpoint <path-to-checkpoint>
-    ```
+- Play:
 
-- Debug visualization (Command markers):
+  ```bash
+  python scripts/skrlcustom/play.py --task SpiderBotAIProject-v0 --checkpoint <path-to-checkpoint> --viz none
+  ```
 
-    ```bash
-    python scripts/skrlcustom/play.py --task=SpiderBotAIProject-v0 --debug_vis
-    ```
+- Debug visualization:
 
-## Docker (Headless Training)
+  ```bash
+  python scripts/skrlcustom/play.py --task SpiderBotAIProject-v0 --checkpoint <path-to-checkpoint> --viz kit --debug_vis
+  ```
 
-This project can be trained headlessly using the official Isaac Lab prebuilt container image.
+- Local debug plot:
+
+  ```bash
+  python scripts/skrlcustom/play.py --task SpiderBotAIProject-v0 --checkpoint <path-to-checkpoint> --viz none --debug_plot
+  ```
+
+  This mode is only supported for local GUI/X11 execution.
+
+## Docker
+
+Single GPU:
 
 ```bash
 docker compose -f docker/compose.yaml up --build
 ```
 
-Notes:
-- The compose file runs `scripts/skrlcustom/train.py` with `--headless`.
-- Training artifacts are saved to `./logs` and `./outputs` (mounted as volumes).
-- To override the env count, set `NUM_ENVS` (e.g. `NUM_ENVS=64 docker compose -f docker/compose.yaml up --build`).
-
-### Docker (2GPU DDP)
-
-If you want to run in 2 GPU env, run this:
+2-GPU DDP:
 
 ```bash
 docker compose -f docker/compose.yaml -f docker/compose.ddp.yaml up --build
 ```
 
 Notes:
-- `--num_envs` is interpreted as per gpu (total envs = `--num_envs * WORLD_SIZE`).
+- Docker examples use `--viz none`.
+- Training artifacts are written to `./logs`, `./outputs`, and `./checkpoints`.
+- To override the env count, set `NUM_ENVS`.
 
 ### Set up IDE (Optional)
 

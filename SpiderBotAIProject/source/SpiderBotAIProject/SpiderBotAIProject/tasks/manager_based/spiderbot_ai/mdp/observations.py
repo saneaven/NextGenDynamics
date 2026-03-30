@@ -10,18 +10,18 @@ import torch
 import isaaclab.utils.math as math_utils
 
 
-def _relative_target_info(robot, target_pos_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def _relative_target_info(robot_state, target_pos_w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Return (unit_vector_body_frame, distance_world_frame) to a target position."""
-    relative_target_pos_w = target_pos_w - robot.data.root_pos_w
+    relative_target_pos_w = target_pos_w - robot_state.root_pos_w
     distance = torch.linalg.norm(relative_target_pos_w, dim=1, keepdim=True)
-    relative_target_pos_b = math_utils.quat_apply_inverse(robot.data.root_quat_w, relative_target_pos_w)
+    relative_target_pos_b = math_utils.quat_apply_inverse(robot_state.root_quat_w, relative_target_pos_w)
     unit_vector_b = relative_target_pos_b / (distance + 1e-6)
     return unit_vector_b, distance
 
 
 def policy_observations(env) -> torch.Tensor:
     """Main policy vector observation (concatenated)."""
-    robot = env.scene.articulations["robot"]
+    robot = env.state.robot
     waypoint = env.command_manager.get_term("waypoint")
     mode_term = env.command_manager.get_term("mode")
 
@@ -30,18 +30,18 @@ def policy_observations(env) -> torch.Tensor:
 
     obs = torch.cat(
         [
-            robot.data.root_lin_vel_b,
-            robot.data.root_ang_vel_b,
-            robot.data.projected_gravity_b,
+            robot.root_lin_vel_b,
+            robot.root_ang_vel_b,
+            robot.projected_gravity_b,
             target_unit_vector,
             target_distance,
             next_target_unit_vector,
             next_target_distance,
-            env._is_contact,
-            robot.data.joint_pos[:, env.robot_idx.dof_idx] - robot.data.default_joint_pos[:, env.robot_idx.dof_idx],
-            robot.data.joint_vel[:, env.robot_idx.dof_idx],
+            env.state.contact.is_contact,
+            robot.joint_pos[:, env.robot_idx.dof_idx] - robot.default_joint_pos[:, env.robot_idx.dof_idx],
+            robot.joint_vel[:, env.robot_idx.dof_idx],
             env.action_manager.action,
-            env._map_output.far_staleness,
+            env.state.map.far_staleness,
             torch.zeros(env.num_envs, 1, device=env.device),  # placeholder (model compat)
             mode_term.command,
         ],
@@ -51,12 +51,12 @@ def policy_observations(env) -> torch.Tensor:
 
 
 def height_data(env) -> torch.Tensor:
-    return env._map_output.height_data
+    return env.state.map.height_data
 
 
 def bev_data(env) -> torch.Tensor:
-    return env._map_output.bev_data
+    return env.state.map.bev_data
 
 
 def nav_data(env) -> torch.Tensor:
-    return env._map_output.nav_data
+    return env.state.map.nav_data

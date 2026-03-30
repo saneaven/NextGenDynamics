@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/isaac-lab:2.3.2
+FROM nvcr.io/nvidia/isaac-lab:3.0.0-beta1
 
 WORKDIR /workspace/SpiderBotAIProject
 

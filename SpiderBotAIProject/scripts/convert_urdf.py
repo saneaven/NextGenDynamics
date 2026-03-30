@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -27,9 +28,11 @@ ASSET_DIR = (
     / "spider_robot"
 )
 
+USD_ROOT = ASSET_DIR / "urdf"
 XACRO_INPUT = ASSET_DIR / "urdf" / "spider_robot.urdf.xacro"
 URDF_OUTPUT = ASSET_DIR / "urdf" / "spider_robot.urdf"
-USD_OUTPUT = ASSET_DIR / "urdf" / "spider_robot" / "spider_robot.usd"
+GENERATED_USD_DIR = USD_ROOT / "spider_robot"
+GENERATED_USD_PATH = GENERATED_USD_DIR / "spider_robot.usda"
 
 
 def generate_urdf() -> None:
@@ -51,17 +54,18 @@ def convert_to_usd() -> None:
     # Isaac Sim / Lab imports only available inside the runtime
     from isaaclab.sim.converters import UrdfConverter, UrdfConverterCfg
 
+    shutil.rmtree(GENERATED_USD_DIR, ignore_errors=True)
+
     cfg = UrdfConverterCfg(
         asset_path=str(URDF_OUTPUT),
-        usd_dir=str(USD_OUTPUT.parent),
-        usd_file_name=USD_OUTPUT.name,
+        usd_dir=str(USD_ROOT),
         fix_base=False,
         merge_fixed_joints=False,
         force_usd_conversion=True,
-        make_instanceable=False,
+        joint_drive=UrdfConverterCfg.JointDriveCfg(),
     )
 
-    print(f"[2/2] Converting URDF -> USD: {USD_OUTPUT.name}")
+    print(f"[2/2] Converting URDF -> USD: {GENERATED_USD_PATH.name}")
     converter = UrdfConverter(cfg)
     print(f"      -> {converter.usd_path}")
 

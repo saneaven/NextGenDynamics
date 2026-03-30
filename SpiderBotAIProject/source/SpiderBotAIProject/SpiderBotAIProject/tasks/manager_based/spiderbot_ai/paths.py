@@ -16,9 +16,9 @@ def package_root() -> Path:
 
 
 ASSETS_DIR = package_root() / "assets"
-ROBOTS_DIR = ASSETS_DIR / "spider_robot" / "urdf" / "spider_robot"
+SPIDER_ASSET_DIR = ASSETS_DIR / "spider_robot" / "urdf" / "spider_robot"
 TERRAINS_DIR = ASSETS_DIR / "terrains"
 
 
-SPIDER_USD_PATH = ROBOTS_DIR / "spider_robot.usd"
+SPIDER_USD_PATH = SPIDER_ASSET_DIR / "spider_robot.usda"
 CUSTOM_TERRAIN_USD_PATH = TERRAINS_DIR / "custom_terrain.usd"

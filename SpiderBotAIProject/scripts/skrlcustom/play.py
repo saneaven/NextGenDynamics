@@ -16,6 +16,11 @@ import sys
 
 from isaaclab.app import AppLauncher
 
+ALGORITHM = "ppo"
+ML_FRAMEWORK = "torch"
+AGENT_CFG_ENTRY_POINT = "skrl_custom_cfg_entry_point"
+SUPPORTED_VISUALIZERS = {"none", "kit"}
+
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Play a checkpoint of a custom skrl PPO_RNN agent.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during play.")
@@ -23,19 +28,8 @@ parser.add_argument("--video_length", type=int, default=200, help="Length of the
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
-parser.add_argument(
-    "--agent",
-    type=str,
-    default=None,
-    help=(
-        "Name of the RL agent configuration entry point. Defaults to None, in which case the argument "
-        "--algorithm is used to determine the default agent configuration entry point."
-    ),
-)
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-parser.add_argument("--ml_framework", type=str, default="torch", choices=["torch"], help="The ML framework used by skrl.")
-parser.add_argument("--algorithm", type=str, default="PPO", choices=["AMP", "PPO", "IPPO", "MAPPO"], help="RL algorithm.")
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
 parser.add_argument(
     "--debug_vis",
@@ -43,12 +37,66 @@ parser.add_argument(
     default=False,
     help="Enable command debug visualization markers (spawn points + waypoints).",
 )
-parser.add_argument("--debug_plot", action="store_true", default=False, help="Show BEV + wall debug plots via matplotlib.")
+parser.add_argument(
+    "--debug_plot",
+    action="store_true",
+    default=False,
+    help="Show BEV + wall debug plots via matplotlib (local GUI/X11 only).",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
+
+
+def _strip_disallowed_app_launcher_args(parser: argparse.ArgumentParser) -> None:
+    action = parser._option_string_actions.get("--headless")
+    if action is None:
+        raise RuntimeError("Expected AppLauncher to register deprecated '--headless'.")
+    for option in tuple(action.option_strings):
+        parser._option_string_actions.pop(option, None)
+    parser._actions = [candidate for candidate in parser._actions if candidate is not action]
+    for group in parser._mutually_exclusive_groups:
+        if action in group._group_actions:
+            group._group_actions.remove(action)
+
+
+def _normalize_project_visualizer(raw_visualizer) -> list[str]:
+    if raw_visualizer is None:
+        return []
+    if isinstance(raw_visualizer, str):
+        values = [part.strip().lower() for part in raw_visualizer.split(",") if part.strip()]
+    else:
+        values = [str(part).strip().lower() for part in raw_visualizer if str(part).strip()]
+    return values
+
+
+def _validate_project_cli(raw_argv: list[str], parser: argparse.ArgumentParser, args_cli) -> None:
+    has_headless = any(arg == "--headless" or arg.startswith("--headless=") for arg in raw_argv)
+    if has_headless:
+        parser.error("--headless is not supported. Use --viz none or --viz kit.")
+
+    has_visualizer = any(
+        arg in {"--viz", "--visualizer"} or arg.startswith("--viz=") or arg.startswith("--visualizer=")
+        for arg in raw_argv
+    )
+    if not has_visualizer:
+        parser.error("--viz is required. Use --viz none or --viz kit.")
+
+    visualizers = _normalize_project_visualizer(getattr(args_cli, "visualizer", None))
+    if len(visualizers) != 1 or visualizers[0] not in SUPPORTED_VISUALIZERS:
+        parser.error("Only '--viz none' and '--viz kit' are supported.")
+    if args_cli.debug_vis and visualizers != ["kit"]:
+        parser.error("--debug_vis requires --viz kit.")
+
+    args_cli.visualizer = visualizers
+    args_cli.headless = False
+
+
+_strip_disallowed_app_launcher_args(parser)
 # parse the arguments
-args_cli, hydra_args = parser.parse_known_args()
+raw_argv = sys.argv[1:]
+args_cli, hydra_args = parser.parse_known_args(raw_argv)
+_validate_project_cli(raw_argv, parser, args_cli)
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -101,16 +149,6 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import SpiderBotAIProject.tasks  # noqa: F401
 from SpiderBotAIProject.tasks.manager_based.spiderbot_ai.agents.skrl_custom_ppo_model import SharedRecurrentModel
-
-# config shortcuts
-algorithm = args_cli.algorithm.lower()
-if args_cli.agent is None:
-    agent_cfg_entry_point = (
-        "skrl_custom_cfg_entry_point" if algorithm in ["ppo"] else f"skrl_custom_{algorithm}_cfg_entry_point"
-    )
-else:
-    agent_cfg_entry_point = args_cli.agent
-
 
 def _init_debug_subplots(registry, artists_out):
     """Build subplots from registered debug plots (called once). Returns the new figure."""
@@ -165,7 +203,7 @@ def _update_debug_plots(fig, registry, artists):
     fig.canvas.flush_events()
 
 
-@hydra_task_config(args_cli.task, agent_cfg_entry_point)
+@hydra_task_config(args_cli.task, AGENT_CFG_ENTRY_POINT)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, experiment_cfg: dict):
     """Play with custom skrl agent."""
     # override configurations with non-hydra CLI arguments
@@ -189,7 +227,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     if args_cli.checkpoint:
         resume_path = os.path.abspath(args_cli.checkpoint)
     else:
-        resume_path = get_checkpoint_path(log_root_path, run_dir=f".*_{algorithm}_{args_cli.ml_framework}", other_dirs=["checkpoints"])
+        resume_path = get_checkpoint_path(log_root_path, run_dir=f".*_{ALGORITHM}_{ML_FRAMEWORK}", other_dirs=["checkpoints"])
     log_dir = os.path.dirname(os.path.dirname(resume_path))
 
     # create isaac environment
@@ -205,7 +243,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
-    if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
+    if isinstance(env.unwrapped, DirectMARLEnv):
         env = multi_agent_to_single_agent(env)
 
     # get environment (step) dt for real-time evaluation
@@ -227,7 +265,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, expe
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     # wrap around environment for skrl
-    env = SkrlVecEnvWrapper(env, ml_framework=args_cli.ml_framework)
+    env = SkrlVecEnvWrapper(env, ml_framework=ML_FRAMEWORK)
     device = env.device
 
     models = {}

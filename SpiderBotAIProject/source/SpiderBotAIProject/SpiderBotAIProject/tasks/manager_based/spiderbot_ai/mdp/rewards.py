@@ -55,12 +55,12 @@ def progress_reward(env) -> torch.Tensor:
 
 def velocity_alignment_reward(env) -> torch.Tensor:
     waypoint = env.command_manager.get_term("waypoint")
-    robot = env.scene.articulations["robot"]
+    robot = env.state.robot
 
     # Use pathfinding direction (wall-aware) instead of straight-line to target
     pathfind_dir_w = waypoint._pathfinding_dir_w[:, :2]
     velocity_alignment = torch.nn.functional.cosine_similarity(
-        robot.data.root_lin_vel_w[:, :2], pathfind_dir_w, dim=1
+        robot.root_lin_vel_w[:, :2], pathfind_dir_w, dim=1
     )
 
     return velocity_alignment * _mode_scale(env, "velocity_alignment") * env.step_dt
@@ -74,22 +74,19 @@ def reach_target_reward(env) -> torch.Tensor:
 
 
 def death_penalty(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    died = robot.data.projected_gravity_b[:, 2] > 0.0
-    on_ground = env._base_contact_time > float(env.cfg.base_on_ground_time)
+    died = env.state.robot.projected_gravity_b[:, 2] > 0.0
+    on_ground = env.state.contact.base_contact_time > float(env.cfg.base_on_ground_time)
     return died.to(torch.float32) + on_ground.to(torch.float32)
 
 
 def feet_ground_time_penalty(env) -> torch.Tensor:
-    contact_sensor = env.scene.sensors["contact_sensor"]
-    contact_time = contact_sensor.data.current_contact_time[:, env.robot_idx.contact_sensor_feet_ids]
+    contact_time = env.state.contact.current_contact_time[:, env.robot_idx.contact_sensor_feet_ids]
     in_contact = (contact_time > 0.0).to(contact_time.dtype)
     return torch.max(contact_time * in_contact, dim=1).values * env.step_dt
 
 
 def jump_penalty(env) -> torch.Tensor:
-    contact_sensor = env.scene.sensors["contact_sensor"]
-    current_air_times = contact_sensor.data.current_air_time[:, env.robot_idx.contact_sensor_feet_ids]
+    current_air_times = env.state.contact.current_air_time[:, env.robot_idx.contact_sensor_feet_ids]
     air_feet_per_agent = (current_air_times > 0).float().sum(dim=1)
     total_foot_num = float(len(env.robot_idx.contact_sensor_feet_ids))
     normalized_air_feet = air_feet_per_agent / total_foot_num
@@ -98,37 +95,37 @@ def jump_penalty(env) -> torch.Tensor:
 
 
 def body_angular_velocity_penalty(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
+    robot = env.state.robot
     return torch.linalg.norm(
-        robot.data.body_link_ang_vel_w[:, env.robot_idx.body_ids, :], dim=(-1, 1)
+        robot.body_link_ang_vel_w[:, env.robot_idx.body_ids, :], dim=(-1, 1)
     ) * env.step_dt
 
 
 def speed_reward(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
+    robot = env.state.robot
     up_dir = torch.tensor([0.0, 0.0, 1.0], device=env.device).view(1, 1, 3)
-    v_w = robot.data.body_link_lin_vel_w[:, env.robot_idx.body_ids]
+    v_w = robot.body_link_lin_vel_w[:, env.robot_idx.body_ids]
     dot = (v_w * up_dir).sum(dim=-1, keepdim=True)
     v_horizontal = v_w - dot * up_dir
     return v_horizontal.norm(dim=-1).squeeze(1) * _mode_scale(env, "speed") * env.step_dt
 
 
 def body_vertical_acceleration_penalty(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    body_vertical_acc = torch.mean(robot.data.body_com_lin_acc_w[:, env.robot_idx.body_ids, 2], dim=1)
+    robot = env.state.robot
+    body_vertical_acc = torch.mean(robot.body_com_lin_acc_w[:, env.robot_idx.body_ids, 2], dim=1)
     return torch.pow(body_vertical_acc, 2.0).clip(max=20.0) * env.step_dt
 
 
 def dof_torques_l2(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    joint_num = float(robot.data.joint_acc.shape[1])
-    return torch.sum(torch.square(robot.data.applied_torque / joint_num), dim=1) * env.step_dt
+    robot = env.state.robot
+    joint_num = float(robot.joint_acc.shape[1])
+    return torch.sum(torch.square(robot.applied_torque / joint_num), dim=1) * env.step_dt
 
 
 def dof_acc_l2(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    joint_num = float(robot.data.joint_acc.shape[1])
-    return torch.sum(torch.square(robot.data.joint_acc / joint_num), dim=1) * env.step_dt
+    robot = env.state.robot
+    joint_num = float(robot.joint_acc.shape[1])
+    return torch.sum(torch.square(robot.joint_acc / joint_num), dim=1) * env.step_dt
 
 
 def action_rate_l2(env) -> torch.Tensor:
@@ -137,33 +134,29 @@ def action_rate_l2(env) -> torch.Tensor:
 
 
 def feet_air_time_reward(env) -> torch.Tensor:
-    contact_sensor = env.scene.sensors["contact_sensor"]
-    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, env.robot_idx.contact_sensor_feet_ids]
-    last_air_time = contact_sensor.data.last_air_time[:, env.robot_idx.contact_sensor_feet_ids]
+    first_contact = env.state.contact.first_contact[:, env.robot_idx.contact_sensor_feet_ids]
+    last_air_time = env.state.contact.last_air_time[:, env.robot_idx.contact_sensor_feet_ids]
     return torch.sum((1.0 - torch.log1p(4.0 * (last_air_time - 0.5) ** 2)) * first_contact, dim=1) * env.step_dt
 
 
 def undesired_contacts_penalty(env) -> torch.Tensor:
-    return torch.sum(env._is_contact[:, env.robot_idx.undesired_contact_body_ids], dim=1) * env.step_dt
+    return torch.sum(env.state.contact.is_contact[:, env.robot_idx.undesired_contact_body_ids], dim=1) * env.step_dt
 
 
 def feet_contact_force_penalty(env) -> torch.Tensor:
-    contact_sensor = env.scene.sensors["contact_sensor"]
-    feet_forces = contact_sensor.data.net_forces_w[:, env.robot_idx.contact_sensor_feet_ids]
+    feet_forces = env.state.contact.net_forces_w[:, env.robot_idx.contact_sensor_feet_ids]
     return (torch.mean(torch.norm(feet_forces, dim=-1), dim=1) ** 2.0) * env.step_dt
 
 
 def flat_orientation_l2(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    return torch.sum(torch.square(robot.data.projected_gravity_b[:, :2]), dim=1) * env.step_dt
+    robot = env.state.robot
+    return torch.sum(torch.square(robot.projected_gravity_b[:, :2]), dim=1) * env.step_dt
 
 
 def wall_proximity_penalty(env) -> torch.Tensor:
-    lidar_sensor = env.scene.sensors["lidar_sensor"]
-
-    lidar_hits_w = lidar_sensor.data.ray_hits_w
+    lidar_hits_w = env.state.sensors.lidar_hits_w
     lidar_hits_w = torch.nan_to_num(lidar_hits_w, nan=1e6, posinf=1e6, neginf=-1e6)
-    rel_hits_w = lidar_hits_w - lidar_sensor.data.pos_w.unsqueeze(1)
+    rel_hits_w = lidar_hits_w - env.state.sensors.lidar_pos_w.unsqueeze(1)
 
     # Distance is rotation-invariant
     dists = torch.norm(rel_hits_w, dim=-1)
@@ -192,12 +185,11 @@ def wall_proximity_penalty(env) -> torch.Tensor:
 
 
 def patrol_exploration_reward(env) -> torch.Tensor:
-    return env._map_output.exploration_bonus * _mode_scale(env, "patrol_exploration") * env.step_dt
+    return env.state.map.exploration_bonus * _mode_scale(env, "patrol_exploration") * env.step_dt
 
 
 def patrol_boundary_penalty(env) -> torch.Tensor:
-    robot = env.scene.articulations["robot"]
-    rel_pos = robot.data.root_pos_w[:, :2] - env.scene.env_origins[:, :2]
+    rel_pos = env.state.robot.root_pos_w[:, :2] - env.state.env_origins[:, :2]
     dist_from_center = torch.norm(rel_pos, dim=1)
     outside_patrol = torch.clamp(dist_from_center - (float(env.cfg.patrol_size) / 2), min=0.0)
     return outside_patrol * _mode_scale(env, "patrol_boundary") * env.step_dt
@@ -206,15 +198,14 @@ def patrol_boundary_penalty(env) -> torch.Tensor:
 def chase_proximity_reward(env) -> torch.Tensor:
     """Continuous reward for staying close to the moving target in CHASE mode."""
     waypoint = env.command_manager.get_term("waypoint")
-    robot = env.scene.articulations["robot"]
-    dist = torch.linalg.norm(waypoint.desired_pos - robot.data.root_pos_w, dim=1)
+    dist = torch.linalg.norm(waypoint.desired_pos - env.state.robot.root_pos_w, dim=1)
     proximity = 1.0 / (dist + 0.5)
     return proximity * _mode_scale(env, "chase_proximity") * env.step_dt
 
 
 def stillness_penalty(env) -> torch.Tensor:
     """Penalize low effective horizontal speed (EMA-filtered to reject oscillation)."""
-    speed = torch.linalg.norm(env._smoothed_vel_xy, dim=1)
+    speed = torch.linalg.norm(env.state.smoothed_vel_xy, dim=1)
     min_speed = 0.5  # m/s threshold
     penalty = torch.clamp(min_speed - speed, min=0.0) / min_speed
     return penalty * penalty * env.step_dt
