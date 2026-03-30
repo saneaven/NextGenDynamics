@@ -9,6 +9,7 @@ import isaaclab.sim as sim_utils
 import isaaclab.terrains as terrain_gen
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.envs.common import ViewerCfg
 from isaaclab.managers import CommandTermCfg as CmdTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -49,14 +50,14 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
     robot = SPIDER_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")  # type: ignore
 
     contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        prim_path="{ENV_REGEX_NS}/Robot/Geometry/.*",
         history_length=3,
         update_period=0.005,
         track_air_time=True,
     )
 
     height_scanner: RayCasterCfg = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        prim_path="{ENV_REGEX_NS}/Robot/Geometry/base_link",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
         ray_alignment="yaw",
         pattern_cfg=patterns.GridPatternCfg(resolution=0.04, size=[2.52, 2.52]),  # type: ignore
@@ -65,7 +66,7 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
     )
 
     lidar_sensor: RayCasterCfg = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        prim_path="{ENV_REGEX_NS}/Robot/Geometry/base_link",
         update_period=1 / 60,
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 0.0)),
         mesh_prim_paths=["/World/terrain"],
@@ -79,16 +80,16 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
     )
 
     sensor_frame_transformer: FrameTransformerCfg = FrameTransformerCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base_link",
+        prim_path="{ENV_REGEX_NS}/Robot/Geometry/base_link",
         target_frames=[
             FrameTransformerCfg.FrameCfg(
                 name="lidar_frame",
-                prim_path="{ENV_REGEX_NS}/Robot/base_link",
+                prim_path="{ENV_REGEX_NS}/Robot/Geometry/base_link",
                 offset=OffsetCfg(pos=(0.0, 0.0, 0.0)),
             ),
             FrameTransformerCfg.FrameCfg(
                 name="height_scanner_frame",
-                prim_path="{ENV_REGEX_NS}/Robot/base_link",
+                prim_path="{ENV_REGEX_NS}/Robot/Geometry/base_link",
                 offset=OffsetCfg(pos=(0.0, 0.0, 20.0)),
             ),
         ],
@@ -194,6 +195,16 @@ class EventCfg:
 class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
     scene: SpiderBotAISceneCfg = SpiderBotAISceneCfg(num_envs=int(1024.0 * 0.5), env_spacing=4.0, replicate_physics=True)
+
+    # Viewer / video recording camera
+    viewer: ViewerCfg = ViewerCfg(
+        eye=(3.0, 3.0, 2.5),
+        lookat=(0.0, 0.0, 0.8),
+        cam_prim_path="/OmniverseKit_Persp",
+        resolution=(1280, 720),
+        origin_type="env",
+        env_index=0,
+    )
 
     # Managers
     actions: ActionsCfg = ActionsCfg()
