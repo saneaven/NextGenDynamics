@@ -63,9 +63,9 @@ class CustomTerrainCfg:
     seed: int = 42
 
     # Height-map synthesis parameters.
-    roughness: float = 0.2
+    roughness: float = 0.25
     hill_scale: float = 768.0
-    hill_height: float = 4.0 # 8.0
+    hill_height: float = 6.0 # 8.0
     hill_noise_lacunarity: float = 2.5
     hill_noise_persistence: float = 0.5
     hill_noise_octaves: int = 32
