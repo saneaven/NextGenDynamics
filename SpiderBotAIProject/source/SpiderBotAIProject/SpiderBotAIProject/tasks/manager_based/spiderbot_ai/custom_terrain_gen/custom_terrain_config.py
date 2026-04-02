@@ -63,9 +63,9 @@ class CustomTerrainCfg:
     seed: int = 42
 
     # Height-map synthesis parameters.
-    roughness: float = 0.1
+    roughness: float = 0.2
     hill_scale: float = 768.0
-    hill_height: float = 2.0 # 8.0
+    hill_height: float = 4.0 # 8.0
     hill_noise_lacunarity: float = 2.5
     hill_noise_persistence: float = 0.5
     hill_noise_octaves: int = 32
@@ -82,7 +82,7 @@ class CustomTerrainCfg:
     # Random terraced zone generation.
     random_terraced_count: int = 10
     random_terraced_size_range: tuple[float, float] = (10.0, 30.0)
-    random_terraced_step_height_range: tuple[float, float] = (0.02, 0.10)
+    random_terraced_step_height_range: tuple[float, float] = (0.02, 0.08)
 
     # Spawn sampling.
     num_points: int = 1024

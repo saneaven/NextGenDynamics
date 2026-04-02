@@ -168,9 +168,12 @@ def wall_proximity_penalty(env) -> torch.Tensor:
     # Hits on terrain (hills/terraces) have delta_z ≈ 0 → not walls.
     # Hits on obstacles (cubes/spheres) have delta_z >> 0 → walls.
     batch_size, num_points, _ = lidar_hits_w.shape
-    hit_xy = lidar_hits_w[..., :2].reshape(-1, 2)
+    # Convert world coords to terrain-local coords (height_at_xy expects (0,0)-centered)
+    env_origins = env.scene.env_origins.unsqueeze(1)  # (B, 1, 3)
+    local_hits = lidar_hits_w - env_origins  # (B, N, 3)
+    hit_xy = local_hits[..., :2].reshape(-1, 2)
     terrain_z = env.terrain_data.height_at_xy(hit_xy).reshape(batch_size, num_points)
-    height_above_terrain = lidar_hits_w[..., 2] - terrain_z
+    height_above_terrain = local_hits[..., 2] - terrain_z
     is_obstacle = height_above_terrain > float(env.cfg.wall_obstacle_height)
 
     valid_wall_hits = is_close & is_obstacle
