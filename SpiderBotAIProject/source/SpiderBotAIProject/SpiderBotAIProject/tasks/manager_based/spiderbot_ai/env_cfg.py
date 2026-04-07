@@ -145,14 +145,14 @@ class ObservationsCfg:
 class RewardsCfg:
     """Reward terms (each computes inline from sensors/robot data)."""
     life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
-    progress = RewTerm(func=mdp.progress_reward, weight=5.0e3)
-    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e2)
+    progress = RewTerm(func=mdp.progress_reward, weight=5.0e4)
+    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e3)
     reach_target = RewTerm(func=mdp.reach_target_reward, weight=5.0e2)
     death_penalty = RewTerm(func=mdp.death_penalty, weight=-3.0e2)
     feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=-5.0e1)
     jump_penalty = RewTerm(func=mdp.jump_penalty, weight=-3.0e2)
     body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=-15.0)
-    speed = RewTerm(func=mdp.speed_reward, weight=7.5e1)
+    speed = RewTerm(func=mdp.speed_reward, weight=5.0e1)
     body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=-3.0)
     dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=-0.25)
     dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=-2.5e-4)
@@ -161,14 +161,14 @@ class RewardsCfg:
     undesired_contacts = RewTerm(func=mdp.undesired_contacts_penalty, weight=-2.0e2)
     feet_contact_force = RewTerm(func=mdp.feet_contact_force_penalty, weight=-1.0e-7)
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0e2)
-    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-5.0e2)
+    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-1.0e3)
 
     patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=2.0e2)
     patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=-2.5)
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=5.0e2)
 
-    stillness = RewTerm(func=mdp.stillness_penalty, weight=-1.25e3)
+    stillness = RewTerm(func=mdp.stillness_penalty, weight=0.0)
 
 
 @configclass
@@ -241,6 +241,8 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     staleness_decay_rate = 1.0
     nav_size = 24.0
     nav_dim = 33
+
+    stillness_min_speed = 1.0  # m/s threshold for stillness penalty
 
     # Patrol staleness targeting
     patrol_target_tolerance: float = 1.5        # "reached" threshold for patrol targets (m)

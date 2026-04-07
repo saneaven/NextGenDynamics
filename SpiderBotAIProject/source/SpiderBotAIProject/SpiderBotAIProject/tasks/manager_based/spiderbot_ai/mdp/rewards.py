@@ -209,6 +209,6 @@ def chase_proximity_reward(env) -> torch.Tensor:
 def stillness_penalty(env) -> torch.Tensor:
     """Penalize low effective horizontal speed (EMA-filtered to reject oscillation)."""
     speed = torch.linalg.norm(env.state.smoothed_vel_xy, dim=1)
-    min_speed = 1.5  # m/s threshold
+    min_speed = float(env.cfg.stillness_min_speed)
     penalty = torch.clamp(min_speed - speed, min=0.0) / min_speed
     return penalty * penalty * env.step_dt
