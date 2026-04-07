@@ -85,8 +85,8 @@ def _validate_project_cli(raw_argv: list[str], parser: argparse.ArgumentParser, 
     visualizers = _normalize_project_visualizer(getattr(args_cli, "visualizer", None))
     if len(visualizers) != 1 or visualizers[0] not in SUPPORTED_VISUALIZERS:
         parser.error("Only '--viz none' and '--viz kit' are supported.")
-    if args_cli.debug_vis and visualizers != ["kit"]:
-        parser.error("--debug_vis requires --viz kit.")
+    if args_cli.debug_vis and visualizers != ["kit"] and not args_cli.video:
+        parser.error("--debug_vis without --viz kit requires --video to be visible.")
 
     args_cli.visualizer = visualizers
 
