@@ -31,6 +31,6 @@ services:
         "--viz",
         "none",
         "--distributed",
-        "--checkpoint",
-        "checkpoints/base_temp.pt",
+        # "--checkpoint",
+        # "checkpoints/base_temp.pt",
       ]
