@@ -17,12 +17,13 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
+from isaaclab.sensors import RayCasterCfg, patterns
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import FrameTransformerCfg, OffsetCfg
 from isaaclab.utils import configclass
 
 from . import mdp
 from .commands.mode_command import ModeCommandTerm
+from .environment.nested_contact_sensor_cfg import SpiderBotNestedContactSensorCfg
 from .commands.waypoint_command import WaypointCommandTerm
 from .environment.spider_robot import SPIDER_ACTUATOR_CFG, SPIDER_CFG
 from .paths import CUSTOM_TERRAIN_USD_PATH
@@ -49,8 +50,8 @@ class SpiderBotAISceneCfg(InteractiveSceneCfg):
 
     robot = SPIDER_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")  # type: ignore
 
-    contact_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/Geometry/.*",
+    contact_sensor: SpiderBotNestedContactSensorCfg = SpiderBotNestedContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot",
         history_length=3,
         update_period=0.005,
         track_air_time=True,
