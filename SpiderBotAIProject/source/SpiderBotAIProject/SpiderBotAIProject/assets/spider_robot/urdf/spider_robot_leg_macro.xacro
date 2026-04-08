@@ -5,6 +5,7 @@
   <xacro:property name="inner_mass" value="0.18"/>
   <xacro:property name="middle_mass" value="0.18"/>
   <xacro:property name="outer_mass" value="0.16"/>
+  <xacro:property name="foot_mass" value="0.05"/>
 
   <xacro:property name="body_size_x" value="0.576834"/>
   <xacro:property name="body_size_y" value="0.510792"/>
@@ -21,18 +22,23 @@
   <xacro:property name="outer_size_x" value="0.538147"/>
   <xacro:property name="outer_size_y" value="0.088318"/>
   <xacro:property name="outer_size_z" value="0.097835"/>
+  <xacro:property name="foot_size_x" value="0.15"/>
+  <xacro:property name="foot_size_y" value="0.06"/>
+  <xacro:property name="foot_size_z" value="0.06"/>
 
   <xacro:property name="body_inertial_xyz" value="0 0 0.006181"/>
   <xacro:property name="shoulder_inertial_xyz" value="0.048902 0 0.032601"/>
   <xacro:property name="inner_inertial_xyz" value="0.22168 0.0163 0"/>
   <xacro:property name="middle_inertial_xyz" value="0.22168 -0.0163 0"/>
   <xacro:property name="outer_inertial_xyz" value="0.226796 0.01611 -0.000166"/>
+  <xacro:property name="foot_inertial_xyz" value="0.075 0.008 0"/>
 
   <xacro:property name="base_to_shoulder_x" value="0.245982"/>
   <xacro:property name="base_to_shoulder_z" value="0.081401"/>
   <xacro:property name="shoulder_to_inner_xyz" value="0.097802 0 0.032601"/>
   <xacro:property name="inner_to_middle_xyz" value="0.443974 0 0"/>
   <xacro:property name="middle_to_outer_xyz" value="0.443098 0 0"/>
+  <xacro:property name="outer_to_foot_xyz" value="0.386244 0.016215 -0.000162"/>
 
   <xacro:property name="shoulder_joint_lower" value="-1.5708"/>
   <xacro:property name="shoulder_joint_upper" value="1.5708"/>
@@ -177,6 +183,22 @@
         effort="${joint_effort}"
         velocity="${joint_velocity}"/>
       <dynamics damping="${joint_damping}" friction="${joint_friction}"/>
+    </joint>
+
+    <xacro:mesh_link
+      name="${prefix}_foot_link"
+      visual_mesh="foot_visual.obj"
+      collision_mesh="foot_collision.stl"
+      mass="${foot_mass}"
+      size_x="${foot_size_x}"
+      size_y="${foot_size_y}"
+      size_z="${foot_size_z}"
+      inertial_xyz="${foot_inertial_xyz}"/>
+
+    <joint name="${prefix}_foot_fixed_joint" type="fixed">
+      <origin xyz="${outer_to_foot_xyz}" rpy="0 0 0"/>
+      <parent link="${prefix}_outer_link"/>
+      <child link="${prefix}_foot_link"/>
     </joint>
   </xacro:macro>
 </robot>

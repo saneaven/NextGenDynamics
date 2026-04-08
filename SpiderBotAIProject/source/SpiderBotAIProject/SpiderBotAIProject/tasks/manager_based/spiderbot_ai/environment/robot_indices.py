@@ -21,6 +21,7 @@ class RobotIndices:
     contact_sensor_base_ids: list[int]
     contact_sensor_feet_ids: list[int]
     undesired_contact_body_ids: list[int]
+    obs_contact_ids: list[int]  # contact body indices used in observation (excludes feet)
 
     @classmethod
     def from_scene(cls, scene, cfg) -> RobotIndices:
@@ -33,10 +34,15 @@ class RobotIndices:
         contact_sensor_feet_ids, _ = contact_sensor.find_bodies(cfg.foot_names)
         undesired_contact_body_ids, _ = contact_sensor.find_bodies(cfg.undesired_contact_body_names)
 
+        # Observation contact indices: all bodies except feet (for checkpoint compat)
+        feet_set = set(contact_sensor_feet_ids)
+        obs_contact_ids = [i for i in range(contact_sensor.num_bodies) if i not in feet_set]
+
         return cls(
             dof_idx=dof_idx,
             body_ids=body_ids,
             contact_sensor_base_ids=contact_sensor_base_ids,
             contact_sensor_feet_ids=contact_sensor_feet_ids,
             undesired_contact_body_ids=undesired_contact_body_ids,
+            obs_contact_ids=obs_contact_ids,
         )

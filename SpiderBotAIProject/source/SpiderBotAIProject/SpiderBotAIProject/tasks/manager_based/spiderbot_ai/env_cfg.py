@@ -218,8 +218,8 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     episode_length_s = 60.0
 
     base_name = "base_link"
-    foot_names = "leg_.*_outer_link"
-    undesired_contact_body_names = "base_link|leg_.*_shoulder_link|leg_.*_inner_link|leg_.*_middle_link"
+    foot_names = "leg_.*_foot_link"
+    undesired_contact_body_names = "base_link|leg_.*_shoulder_link|leg_.*_inner_link|leg_.*_middle_link|leg_.*_outer_link"
 
     # Commands / reset
     spawn_mode: str = "waypoint"  # "waypoint" = all WAYPOINT; "mixed" = evenly distribute 3 modes

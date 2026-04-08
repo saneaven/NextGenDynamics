@@ -131,6 +131,30 @@
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
   </joint>
+  <link name="leg_01_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_01_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_01_outer_link"/>
+    <child link="leg_01_foot_link"/>
+  </joint>
   <link name="leg_02_shoulder_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0.048902 0 0.032601"/>
@@ -238,6 +262,30 @@
     <axis xyz="0 1 0"/>
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
+  </joint>
+  <link name="leg_02_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_02_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_02_outer_link"/>
+    <child link="leg_02_foot_link"/>
   </joint>
   <link name="leg_03_shoulder_link">
     <inertial>
@@ -347,6 +395,30 @@
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
   </joint>
+  <link name="leg_03_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_03_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_03_outer_link"/>
+    <child link="leg_03_foot_link"/>
+  </joint>
   <link name="leg_04_shoulder_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0.048902 0 0.032601"/>
@@ -454,6 +526,30 @@
     <axis xyz="0 1 0"/>
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
+  </joint>
+  <link name="leg_04_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_04_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_04_outer_link"/>
+    <child link="leg_04_foot_link"/>
   </joint>
   <link name="leg_05_shoulder_link">
     <inertial>
@@ -563,6 +659,30 @@
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
   </joint>
+  <link name="leg_05_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_05_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_05_outer_link"/>
+    <child link="leg_05_foot_link"/>
+  </joint>
   <link name="leg_06_shoulder_link">
     <inertial>
       <origin rpy="0 0 0" xyz="0.048902 0 0.032601"/>
@@ -670,5 +790,29 @@
     <axis xyz="0 1 0"/>
     <limit effort="40.0" lower="-2.9671" upper="2.9671" velocity="4.0"/>
     <dynamics damping="0.2" friction="0.0"/>
+  </joint>
+  <link name="leg_06_foot_link">
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.075 0.008 0"/>
+      <mass value="0.05"/>
+      <inertia ixx="3e-05" ixy="0.0" ixz="0.0" iyy="0.00010875" iyz="0.0" izz="0.00010875"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/visual/foot_visual.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="../meshes/collision/foot_collision.stl" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_06_foot_fixed_joint" type="fixed">
+    <origin rpy="0 0 0" xyz="0.386244 0.016215 -0.000162"/>
+    <parent link="leg_06_outer_link"/>
+    <child link="leg_06_foot_link"/>
   </joint>
 </robot>

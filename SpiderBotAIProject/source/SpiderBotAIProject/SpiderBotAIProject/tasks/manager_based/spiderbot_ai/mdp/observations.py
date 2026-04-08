@@ -37,7 +37,7 @@ def policy_observations(env) -> torch.Tensor:
             target_distance,
             next_target_unit_vector,
             next_target_distance,
-            env.state.contact.is_contact,
+            env.state.contact.is_contact[:, env.robot_idx.obs_contact_ids],
             robot.joint_pos[:, env.robot_idx.dof_idx] - robot.default_joint_pos[:, env.robot_idx.dof_idx],
             robot.joint_vel[:, env.robot_idx.dof_idx],
             env.action_manager.action,
