@@ -48,7 +48,7 @@ def progress_reward(env) -> torch.Tensor:
     delta = torch.where(torch.isinf(prev_geo) | torch.isinf(curr_geo), torch.zeros_like(delta), delta)
 
     progress = delta * ((waypoint.targets_reached * 0.25) + 1.0)
-    progress = torch.sign(progress) * torch.log1p(progress.abs())
+    progress = torch.sign(progress) * progress.abs().pow(0.3)
 
     return progress * _mode_scale(env, "progress") * env.step_dt
 
