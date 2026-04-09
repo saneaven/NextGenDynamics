@@ -169,7 +169,7 @@ class RewardsCfg:
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=5.0e2)
 
-    stillness = RewTerm(func=mdp.stillness_penalty, weight=0.0)
+    stillness = RewTerm(func=mdp.stillness_penalty, weight=-1.0e3)
 
 
 @configclass
@@ -291,7 +291,7 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     }
 
     # Sensors / contacts
-    contact_threshold = 1.0
+    contact_threshold = 2.0
     base_on_ground_time = 1.0
 
     def __post_init__(self) -> None:
