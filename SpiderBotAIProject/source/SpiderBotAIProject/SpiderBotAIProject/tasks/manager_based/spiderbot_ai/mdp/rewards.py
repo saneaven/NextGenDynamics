@@ -11,6 +11,8 @@ No ensure_updated() or FeatureCacheCommandTerm dependency.
 
 from __future__ import annotations
 
+import math
+
 import torch
 
 
@@ -33,6 +35,31 @@ def life_time_reward(env) -> torch.Tensor:
     return env.episode_length_buf.float() * env.step_dt * env.step_dt
 
 
+def _shape_geodesic_progress_rate(v_geo: torch.Tensor, env) -> torch.Tensor:
+    """Shape geodesic progress speed around a target speed with asymmetric slopes."""
+    v_ref = float(env.cfg.progress_target_speed)
+    tau_lo = float(env.cfg.progress_low_speed_tau)
+    tau_hi = float(env.cfg.progress_high_speed_tau)
+    backward_gain = float(env.cfg.progress_backward_gain)
+
+    low_scale = v_ref + tau_lo
+    anchor = low_scale * math.log1p(v_ref / tau_lo)
+
+    backward_speed = (-v_geo).clamp(min=0.0)
+    forward_speed = v_geo.clamp(min=0.0)
+    excess_speed = (v_geo - v_ref).clamp(min=0.0)
+
+    backward_reward = -backward_gain * low_scale * torch.log1p(backward_speed / tau_lo)
+    low_speed_reward = low_scale * torch.log1p(forward_speed / tau_lo)
+    high_speed_reward = anchor + tau_hi * torch.log1p(excess_speed / tau_hi)
+
+    return torch.where(
+        v_geo < 0.0,
+        backward_reward,
+        torch.where(v_geo <= v_ref, low_speed_reward, high_speed_reward),
+    )
+
+
 def progress_reward(env) -> torch.Tensor:
     waypoint = env.command_manager.get_term("waypoint")
 
@@ -47,8 +74,9 @@ def progress_reward(env) -> torch.Tensor:
     # Unreachable targets (inf distance) → no progress signal
     delta = torch.where(torch.isinf(prev_geo) | torch.isinf(curr_geo), torch.zeros_like(delta), delta)
 
-    progress = delta * ((waypoint.targets_reached * 0.25) + 1.0)
-    progress = torch.sign(progress) * progress.abs().pow(0.3)
+    v_geo = delta / max(float(env.step_dt), 1.0e-6)
+    progress = _shape_geodesic_progress_rate(v_geo, env)
+    progress = progress * (1.0 + 0.25 * waypoint.targets_reached.to(dtype=progress.dtype))
 
     return progress * _mode_scale(env, "progress") * env.step_dt
 

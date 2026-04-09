@@ -153,7 +153,7 @@ class RewardsCfg:
     feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=-5.0e1)
     jump_penalty = RewTerm(func=mdp.jump_penalty, weight=-3.0e2)
     body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=-15.0)
-    speed = RewTerm(func=mdp.speed_reward, weight=5.0e1)
+    speed = RewTerm(func=mdp.speed_reward, weight=0.0e1)
     body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=-3.0)
     dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=-0.25)
     dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=-2.5e-4)
@@ -264,6 +264,10 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     robot_collision_radius = 0.3  # robot body inflation for traversability grid (m)
 
     # Reward shaping parameters (scales live in RewardsCfg weights).
+    progress_target_speed = 1.5
+    progress_low_speed_tau = 0.35
+    progress_high_speed_tau = 1.0
+    progress_backward_gain = 1.0
     wall_close_threshold = 1.0
     wall_obstacle_height = 0.15  # min height above terrain surface to count as obstacle (m)
 
