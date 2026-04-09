@@ -6,7 +6,6 @@
 """Reward functions for SpiderBotAIProject.
 
 Each function computes its value inline from sensors/robot data.
-No ensure_updated() or FeatureCacheCommandTerm dependency.
 """
 
 from __future__ import annotations
