@@ -169,7 +169,7 @@ class RewardsCfg:
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=5.0e2)
 
-    stillness = RewTerm(func=mdp.stillness_penalty, weight=-1.0e3)
+    stillness = RewTerm(func=mdp.stillness_penalty, weight=0.0)
 
 
 @configclass
