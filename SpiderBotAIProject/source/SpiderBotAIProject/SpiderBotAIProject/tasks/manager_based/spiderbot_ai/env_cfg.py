@@ -146,7 +146,7 @@ class ObservationsCfg:
 class RewardsCfg:
     """Reward terms (each computes inline from sensors/robot data)."""
     life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
-    progress = RewTerm(func=mdp.progress_reward, weight=5.0e3)
+    progress = RewTerm(func=mdp.progress_reward, weight=1.0e4)
     velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e3)
     reach_target = RewTerm(func=mdp.reach_target_reward, weight=5.0e2)
     death_penalty = RewTerm(func=mdp.death_penalty, weight=-3.0e2)
@@ -164,10 +164,10 @@ class RewardsCfg:
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0e2)
     wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-1.0e3)
 
-    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=2.0e2)
+    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=5.0e3)
     patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=-2.5)
 
-    chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=5.0e2)
+    chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=1.0e4)
 
     stillness = RewTerm(func=mdp.stillness_penalty, weight=0.0)
 
@@ -265,8 +265,8 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
 
     # Reward shaping parameters (scales live in RewardsCfg weights).
     progress_target_speed = 1.5
-    progress_low_speed_tau = 0.35
-    progress_high_speed_tau = 1.0
+    progress_low_speed_tau = 0.1
+    progress_high_speed_tau = 1.6
     progress_backward_gain = 1.0
     wall_close_threshold = 1.0
     wall_obstacle_height = 0.15  # min height above terrain surface to count as obstacle (m)
