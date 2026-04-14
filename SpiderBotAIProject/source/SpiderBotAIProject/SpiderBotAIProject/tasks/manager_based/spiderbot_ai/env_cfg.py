@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import isaaclab.sim as sim_utils
 import isaaclab.terrains as terrain_gen
+from isaaclab_physx.physics import PhysxCfg
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.envs.common import ViewerCfg
@@ -298,3 +299,4 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 2
         self.sim.dt = 1 / 120
         self.sim.render_interval = self.decimation
+        self.sim.physics = PhysxCfg(gpu_collision_stack_size=2**29)
