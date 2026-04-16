@@ -165,7 +165,7 @@ class RewardsCfg:
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0e2)
     wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-1.0e2)
 
-    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=5.0e3)
+    patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=1.0e3)
     patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=-2.5)
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=1.0e4)
