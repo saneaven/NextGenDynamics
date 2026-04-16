@@ -300,4 +300,4 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 2
         self.sim.dt = 1 / 120
         self.sim.render_interval = self.decimation
-        self.sim.physics = PhysxCfg(gpu_collision_stack_size=2**29)
+        # self.sim.physics = PhysxCfg(gpu_collision_stack_size=2**29)
