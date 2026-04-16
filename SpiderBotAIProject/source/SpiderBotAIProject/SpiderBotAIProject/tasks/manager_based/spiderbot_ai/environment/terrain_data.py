@@ -161,28 +161,17 @@ class TerrainData:
         return torch.any(dist2 < thresh2, dim=1)
 
     def sample_spawn(self, env_origins: torch.Tensor, patrol_size: float) -> torch.Tensor:
-        """Sample spawn XY positions near environment origins.
+        """Sample spawn XY positions uniformly across the full spawn-point pool.
 
         Returns:
             (N, 2) XY world positions (caller adds Z).
         """
         n = env_origins.shape[0]
-        env_origins_xy = env_origins[:, :2]
-        patrol_r = patrol_size / 2.0
         spawn_xy = self.spawn_points[:, :2]
-        out_xy = torch.zeros(n, 2, device=self.device, dtype=torch.float32)
-
-        for i in range(n):
-            center = env_origins_xy[i]
-            d = torch.norm(spawn_xy - center, dim=1)
-            candidates = (d < patrol_r).nonzero(as_tuple=False).squeeze(-1)
-            if candidates.numel() == 0:
-                out_xy[i] = center
-            else:
-                idx = candidates[torch.randint(0, candidates.numel(), (1,), device=self.device)]
-                out_xy[i] = spawn_xy[idx].squeeze(0)
-
-        return out_xy
+        if spawn_xy.shape[0] == 0:
+            return env_origins[:, :2].clone()
+        idx = torch.randint(0, spawn_xy.shape[0], (n,), device=self.device)
+        return spawn_xy[idx].clone()
 
     def sample_target(self, anchor_pos_w: torch.Tensor, cfg) -> tuple[torch.Tensor, torch.Tensor, np.ndarray]:
         """Sample target positions with pathfinding validation.

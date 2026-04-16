@@ -147,30 +147,30 @@ class ObservationsCfg:
 class RewardsCfg:
     """Reward terms (each computes inline from sensors/robot data)."""
     life_time = RewTerm(func=mdp.life_time_reward, weight=0.005)
-    progress = RewTerm(func=mdp.progress_reward, weight=1.0e4)
-    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e3)
-    reach_target = RewTerm(func=mdp.reach_target_reward, weight=5.0e2)
+    progress = RewTerm(func=mdp.progress_reward, weight=5.0e3)
+    velocity_alignment = RewTerm(func=mdp.velocity_alignment_reward, weight=5.0e2)
+    reach_target = RewTerm(func=mdp.reach_target_reward, weight=1.0e2)
     death_penalty = RewTerm(func=mdp.death_penalty, weight=-3.0e2)
     feet_ground_time = RewTerm(func=mdp.feet_ground_time_penalty, weight=-5.0e1)
     jump_penalty = RewTerm(func=mdp.jump_penalty, weight=-3.0e2)
     body_angular_velocity = RewTerm(func=mdp.body_angular_velocity_penalty, weight=-15.0)
-    speed = RewTerm(func=mdp.speed_reward, weight=0.0e1)
+    speed = RewTerm(func=mdp.speed_reward, weight=5.0e2)
     body_vertical_acceleration = RewTerm(func=mdp.body_vertical_acceleration_penalty, weight=-3.0)
     dof_torques = RewTerm(func=mdp.dof_torques_l2, weight=-0.25)
     dof_acc = RewTerm(func=mdp.dof_acc_l2, weight=-2.5e-4)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.5)
     feet_air_time = RewTerm(func=mdp.feet_air_time_reward, weight=1.0e1)
-    undesired_contacts = RewTerm(func=mdp.undesired_contacts_penalty, weight=-2.0e2)
+    undesired_contacts = RewTerm(func=mdp.undesired_contacts_penalty, weight=-1.0e2)
     feet_contact_force = RewTerm(func=mdp.feet_contact_force_penalty, weight=-1.0e-7)
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0e2)
-    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-1.0e3)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0e2)
+    wall_proximity = RewTerm(func=mdp.wall_proximity_penalty, weight=-1.0e2)
 
     patrol_exploration = RewTerm(func=mdp.patrol_exploration_reward, weight=5.0e3)
     patrol_boundary = RewTerm(func=mdp.patrol_boundary_penalty, weight=-2.5)
 
     chase_proximity = RewTerm(func=mdp.chase_proximity_reward, weight=1.0e4)
 
-    stillness = RewTerm(func=mdp.stillness_penalty, weight=0.0)
+    stillness = RewTerm(func=mdp.stillness_penalty, weight=-5.0e3)
 
 
 @configclass
@@ -224,7 +224,7 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     undesired_contact_body_names = "base_link|leg_.*_shoulder_link|leg_.*_inner_link|leg_.*_middle_link|leg_.*_outer_link"
 
     # Commands / reset
-    spawn_mode: str = "waypoint"  # "waypoint" = all WAYPOINT; "mixed" = evenly distribute 3 modes
+    spawn_mode: str = "mixed"  # "waypoint" = all WAYPOINT; "mixed" = evenly distribute 3 modes
     spawn_z_offset = 1.0
     spawn_yaw_range = 0.5
 
@@ -287,8 +287,9 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
         "reach_target":       (1.0, 0.0, 0.5),
         "patrol_exploration": (0.0, 1.0, 0.0),
         "patrol_boundary":    (0.0, 1.0, 0.0),
-        "speed":              (1.0, 1.0, 1.5),
+        "speed":              (0.0, 1.0, 1.5),
         "chase_proximity":    (0.0, 0.0, 1.0),
+        "stillness":          (0.0, 1.0, 1.5),
     }
 
     # Sensors / contacts

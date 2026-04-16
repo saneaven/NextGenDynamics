@@ -53,6 +53,10 @@ class WaypointCommandTerm(CommandTerm):
         self._pathfinding_dir_w = torch.zeros(self.num_envs, 3, device=self.device)
         self._force_respawn = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
+        # (row, col) of the nav-grid cell whose distance_field is currently cached.
+        # -1 sentinel means "no valid field yet"; CHASE uses this to trigger BFS only on cell change.
+        self._chase_field_cell = torch.full((self.num_envs, 2), -1, dtype=torch.long, device=self.device)
+
     @property
     def command(self) -> torch.Tensor:
         return self.desired_pos
@@ -229,6 +233,10 @@ class WaypointCommandTerm(CommandTerm):
         fields_t = torch.from_numpy(fields_np).to(self.device)
         self._distance_field[env_ids_t] = fields_t
 
+        # Remember which cell this field was built for — drives CHASE cell-change recompute.
+        gi, gj = td._xy_to_grid(self.desired_pos[env_ids_t, :2])
+        self._chase_field_cell[env_ids_t] = torch.stack([gi, gj], dim=1)
+
         robot_xy = self._env.state.robot.root_pos_w[env_ids_t, :2]
         geo = td.geodesic_distance_at(robot_xy, fields_t)
         self._geodesic_distance[env_ids_t] = geo
@@ -322,6 +330,18 @@ class WaypointCommandTerm(CommandTerm):
             new_z = td.height_at_xy(valid_xy) + float(cfg.target_z_offset)
             self.desired_pos[valid_ids, :2] = valid_xy
             self.desired_pos[valid_ids, 2] = new_z
+
+        # 6. Recompute geodesic field for chase targets that crossed into a new nav-grid cell.
+        # Bounds the stale-field error to a single cell (vs. growing unboundedly between reaches).
+        gi, gj = td._xy_to_grid(self.desired_pos[chase_ids, :2])
+        new_cell = torch.stack([gi, gj], dim=1)
+        prev_cell = self._chase_field_cell[chase_ids]
+        changed = (new_cell != prev_cell).any(dim=1)
+        if changed.any():
+            recompute_ids = chase_ids[changed]
+            target_xy_np = self.desired_pos[recompute_ids, :2].detach().cpu().numpy()
+            fields_np = td._bfs_distance_field(target_xy_np)
+            self._set_distance_field(recompute_ids, fields_np)
 
     def _update_patrol_target(self, patrol_ids: torch.Tensor, dt: float) -> None:
         """Set desired_pos for patrol envs to the highest-staleness region."""

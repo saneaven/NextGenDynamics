@@ -238,4 +238,4 @@ def stillness_penalty(env) -> torch.Tensor:
     speed = torch.linalg.norm(env.state.smoothed_vel_xy, dim=1)
     min_speed = float(env.cfg.stillness_min_speed)
     penalty = torch.clamp(min_speed - speed, min=0.0) / min_speed
-    return penalty * penalty * env.step_dt
+    return penalty * penalty * _mode_scale(env, "stillness") * env.step_dt

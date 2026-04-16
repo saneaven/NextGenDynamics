@@ -81,7 +81,7 @@ class SharedRecurrentModel(GaussianMixin, DeterministicMixin, Model):
             self,
             clip_actions=False,
             clip_log_std=True,
-            min_log_std=-20.0,
+            min_log_std=-2.0,
             max_log_std=2.0,
             reduction="sum",
             role="policy",
