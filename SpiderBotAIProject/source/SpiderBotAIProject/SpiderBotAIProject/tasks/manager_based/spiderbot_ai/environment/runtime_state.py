@@ -189,7 +189,7 @@ class SpiderBotStateCache:
 
         self._map_manager.update_into(
             output=self.state.map,
-            env_origins=self.state.env_origins,
+            patrol_center_w=self._env.spawn_pos_w,
             robot_pos_w=robot.root_pos_w,
             robot_yaw_w=robot.root_yaw_w,
             lidar_hits_w=sensors.lidar_hits_w,

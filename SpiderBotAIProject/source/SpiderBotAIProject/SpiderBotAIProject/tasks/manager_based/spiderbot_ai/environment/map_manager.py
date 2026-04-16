@@ -88,7 +88,7 @@ class MapManager:
     def update(
         self,
         *,
-        env_origins,
+        patrol_center_w,
         robot_pos_w,
         robot_yaw_w,
         lidar_hits_w,
@@ -103,7 +103,7 @@ class MapManager:
 
         self.update_into(
             output=self._default_output,
-            env_origins=env_origins,
+            patrol_center_w=patrol_center_w,
             robot_pos_w=robot_pos_w,
             robot_yaw_w=robot_yaw_w,
             lidar_hits_w=lidar_hits_w,
@@ -119,7 +119,7 @@ class MapManager:
         self,
         *,
         output: MapManagerOutput,
-        env_origins,
+        patrol_center_w,
         robot_pos_w,
         robot_yaw_w,
         lidar_hits_w,
@@ -131,12 +131,12 @@ class MapManager:
     ) -> None:
         self._ensure_workspace(int(lidar_hits_w.shape[1]), lidar_hits_w.dtype)
 
-        self._update_staleness_map(lidar_hits_w, env_origins, dt, output.exploration_bonus)
-        self._get_far_staleness(robot_pos_w, robot_yaw_w, env_origins, output.far_staleness)
-        self._sample_egocentric_maps(robot_pos_w, robot_yaw_w, env_origins, output.nav_data)
+        self._update_staleness_map(lidar_hits_w, patrol_center_w, dt, output.exploration_bonus)
+        self._get_far_staleness(robot_pos_w, robot_yaw_w, patrol_center_w, output.far_staleness)
+        self._sample_egocentric_maps(robot_pos_w, robot_yaw_w, patrol_center_w, output.nav_data)
         self._compute_height_data(height_hits_w, height_scanner_pos_w, output.height_data)
         self._compute_bev_data(lidar_hits_w, lidar_pos_w, lidar_yaw_quat_w, output.bev_data)
-        self._compute_staleness_peak(env_origins, output)
+        self._compute_staleness_peak(patrol_center_w, output)
 
     def _create_workspace(self, num_points: int) -> MapManagerWorkspace:
         dim = int(self.config.staleness_dim)
@@ -182,7 +182,7 @@ class MapManager:
                 dtype=lidar_dtype,
             )
 
-    def _update_staleness_map(self, lidar_hits_w, env_origins, dt, output_exploration_bonus: torch.Tensor) -> None:
+    def _update_staleness_map(self, lidar_hits_w, patrol_center_w, dt, output_exploration_bonus: torch.Tensor) -> None:
         """Update staleness (decay + clear seen areas) and write exploration reward."""
         ws = self._workspace
         dim = int(self.config.staleness_dim)
@@ -193,7 +193,7 @@ class MapManager:
         torch.minimum(self.staleness_maps, self.patrol_mask, out=self.staleness_maps)
 
         # X pass: compute col indices and the first part of the valid mask.
-        torch.sub(lidar_hits_w[..., 0], env_origins[:, 0].unsqueeze(1), out=ws.rel)
+        torch.sub(lidar_hits_w[..., 0], patrol_center_w[:, 0].unsqueeze(1), out=ws.rel)
         torch.ge(ws.rel, -half_size, out=ws.valid_mask)
         torch.lt(ws.rel, half_size, out=ws.valid_mask_tmp)
         ws.valid_mask.logical_and_(ws.valid_mask_tmp)
@@ -206,7 +206,7 @@ class MapManager:
         ws.col_idx.clamp_(0, dim - 1)
 
         # Y pass: finish the valid mask and compute flat cell indices.
-        torch.sub(lidar_hits_w[..., 1], env_origins[:, 1].unsqueeze(1), out=ws.rel)
+        torch.sub(lidar_hits_w[..., 1], patrol_center_w[:, 1].unsqueeze(1), out=ws.rel)
         torch.ge(ws.rel, -half_size, out=ws.valid_mask_tmp)
         ws.valid_mask.logical_and_(ws.valid_mask_tmp)
         torch.lt(ws.rel, half_size, out=ws.valid_mask_tmp)
@@ -240,7 +240,7 @@ class MapManager:
         ws.inverse_hit_map.add_(1.0)
         staleness_flat.mul_(ws.inverse_hit_map)
 
-    def _get_far_staleness(self, robot_pos_w, robot_yaw_w, env_origins, output_far: torch.Tensor) -> None:
+    def _get_far_staleness(self, robot_pos_w, robot_yaw_w, patrol_center_w, output_far: torch.Tensor) -> None:
         """Get average staleness in 8 cardinal directions around the robot."""
         ws = self._workspace
         b = self.num_envs
@@ -249,8 +249,8 @@ class MapManager:
 
         grid_x = ws.base_gx.expand(b, -1, -1)
         grid_y = ws.base_gy.expand(b, -1, -1)
-        pixel_x = grid_x * half + env_origins[:, 0].view(b, 1, 1)
-        pixel_y = grid_y * half + env_origins[:, 1].view(b, 1, 1)
+        pixel_x = grid_x * half + patrol_center_w[:, 0].view(b, 1, 1)
+        pixel_y = grid_y * half + patrol_center_w[:, 1].view(b, 1, 1)
 
         dx = pixel_x - robot_pos_w[:, 0].view(b, 1, 1)
         dy = pixel_y - robot_pos_w[:, 1].view(b, 1, 1)
@@ -277,15 +277,15 @@ class MapManager:
         output_far.copy_(ws.far_out)
         output_far.div_(ws.far_counts + 1e-6)
 
-    def _sample_egocentric_maps(self, robot_pos_w, robot_yaw_w, env_origins, output_nav: torch.Tensor) -> None:
+    def _sample_egocentric_maps(self, robot_pos_w, robot_yaw_w, patrol_center_w, output_nav: torch.Tensor) -> None:
         """Generate egocentric nav observation (1 channel: staleness)."""
         ws = self._workspace
         cos = torch.cos(robot_yaw_w).squeeze(-1)
         sin = torch.sin(robot_yaw_w).squeeze(-1)
 
         half_patrol = float(self.config.patrol_size) / 2.0
-        rel_x = (robot_pos_w[:, 0] - env_origins[:, 0]) / half_patrol
-        rel_y = (robot_pos_w[:, 1] - env_origins[:, 1]) / half_patrol
+        rel_x = (robot_pos_w[:, 0] - patrol_center_w[:, 0]) / half_patrol
+        rel_y = (robot_pos_w[:, 1] - patrol_center_w[:, 1]) / half_patrol
 
         tx = -rel_x * cos - rel_y * sin
         ty = rel_x * sin - rel_y * cos
@@ -307,7 +307,7 @@ class MapManager:
         nav_staleness = F.grid_sample(self.staleness_maps, grid_s, align_corners=False, padding_mode="border")
         output_nav.copy_(nav_staleness)
 
-    def _compute_staleness_peak(self, env_origins: torch.Tensor, output: MapManagerOutput) -> None:
+    def _compute_staleness_peak(self, patrol_center_w: torch.Tensor, output: MapManagerOutput) -> None:
         """Find the highest-staleness region and write world XY + value to output."""
         dim = int(self.config.staleness_dim)
         half_size = float(self.config.patrol_size) / 2.0
@@ -322,8 +322,8 @@ class MapManager:
         peak_col = peak_flat_idx % dim
 
         # Grid cell center → world coordinates
-        output.staleness_peak_world[:, 0] = (peak_col.float() + 0.5) * cell_size - half_size + env_origins[:, 0]
-        output.staleness_peak_world[:, 1] = (peak_row.float() + 0.5) * cell_size - half_size + env_origins[:, 1]
+        output.staleness_peak_world[:, 0] = (peak_col.float() + 0.5) * cell_size - half_size + patrol_center_w[:, 0]
+        output.staleness_peak_world[:, 1] = (peak_row.float() + 0.5) * cell_size - half_size + patrol_center_w[:, 1]
 
         # Report unsmoothed staleness at the peak cell
         staleness_flat = self.staleness_maps.view(self.num_envs, -1)

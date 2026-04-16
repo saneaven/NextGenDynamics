@@ -273,7 +273,7 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     wall_obstacle_height = 0.15  # min height above terrain surface to count as obstacle (m)
 
     # Chase mode settings
-    chase_target_speed = 0.5              # wandering speed (m/s)
+    chase_target_speed = 1.7              # wandering speed (m/s)
     chase_target_wander_rate = 1.5        # max heading change (rad/s)
     chase_target_boundary_margin = 3.0    # start steering away from boundary (m)
     chase_success_tolerance = 1.0

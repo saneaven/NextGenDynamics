@@ -219,7 +219,7 @@ def patrol_exploration_reward(env) -> torch.Tensor:
 
 
 def patrol_boundary_penalty(env) -> torch.Tensor:
-    rel_pos = env.state.robot.root_pos_w[:, :2] - env.state.env_origins[:, :2]
+    rel_pos = env.state.robot.root_pos_w[:, :2] - env.spawn_pos_w[:, :2]
     dist_from_center = torch.norm(rel_pos, dim=1)
     outside_patrol = torch.clamp(dist_from_center - (float(env.cfg.patrol_size) / 2), min=0.0)
     return outside_patrol * _mode_scale(env, "patrol_boundary") * env.step_dt
