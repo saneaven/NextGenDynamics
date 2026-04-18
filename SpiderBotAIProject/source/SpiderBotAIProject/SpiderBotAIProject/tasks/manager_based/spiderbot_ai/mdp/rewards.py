@@ -75,7 +75,6 @@ def progress_reward(env) -> torch.Tensor:
 
     v_geo = delta / max(float(env.step_dt), 1.0e-6)
     progress = _shape_geodesic_progress_rate(v_geo, env)
-    progress = progress * (1.0 + 0.25 * waypoint.targets_reached.to(dtype=progress.dtype))
 
     return progress * _mode_scale(env, "progress") * env.step_dt
 
@@ -96,7 +95,7 @@ def velocity_alignment_reward(env) -> torch.Tensor:
 def reach_target_reward(env) -> torch.Tensor:
     waypoint = env.command_manager.get_term("waypoint")
 
-    reward = (0.5 + waypoint.targets_reached * 0.5) * waypoint.reached_target.to(dtype=waypoint.targets_reached.dtype)
+    reward = waypoint.reached_target.to(torch.float32)
     return reward * _mode_scale(env, "reach_target")
 
 
