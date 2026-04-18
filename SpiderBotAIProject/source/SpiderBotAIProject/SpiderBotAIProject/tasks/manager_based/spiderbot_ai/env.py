@@ -228,7 +228,7 @@ class SpiderBotAIEnv(ManagerBasedRLEnv):
         tr = waypoint.targets_reached
         log["Waypoint/targets_reached_max"] = tr.max()
         for k in range(1, 10):
-            log[f"Waypoint/count_reached_{k}"] = (tr == k).sum()
+            log[f"Waypoint/ratio_reached_{k}"] = (tr == k).float().mean()
 
         return self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
 
