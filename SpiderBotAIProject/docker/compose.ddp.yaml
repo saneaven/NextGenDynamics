@@ -33,4 +33,6 @@ services:
         "--distributed",
         "--checkpoint",
         "checkpoints/base_temp.pt",
+        "--checkpoint_load_mode",
+        "policy_only"
       ]

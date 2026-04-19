@@ -76,6 +76,12 @@ parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument("--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
+parser.add_argument(
+    "--checkpoint_load_mode",
+    choices=("full", "policy_only"),
+    default="full",
+    help="How to load --checkpoint: full agent state or policy weights only.",
+)
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
 parser.add_argument(
@@ -200,7 +206,9 @@ simulation_app = app_launcher.app
 
 #### SKRL TRAINING SCRIPT BELOW ####
 
+import pickle
 import random
+from collections.abc import Mapping
 from datetime import datetime
 
 import gymnasium as gym
@@ -232,7 +240,6 @@ from isaaclab.envs import (
 )
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
-import pickle
 
 from isaaclab.utils.io import dump_yaml
 
@@ -243,6 +250,42 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import SpiderBotAIProject.tasks  # noqa: F401
 from SpiderBotAIProject.tasks.manager_based.spiderbot_ai.agents.skrl_custom_ppo_model import SharedRecurrentModel
+
+
+def _load_policy_weights_only(model, checkpoint_path: str, device) -> None:
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    if not isinstance(checkpoint, Mapping) or "policy" not in checkpoint:
+        raise RuntimeError(f"Checkpoint does not contain a 'policy' state_dict: {checkpoint_path}")
+
+    state_dict = checkpoint["policy"]
+    if isinstance(state_dict, Mapping) and "state_dict" in state_dict:
+        state_dict = state_dict["state_dict"]
+
+    if not isinstance(state_dict, Mapping):
+        raise RuntimeError(f"Invalid policy state_dict in checkpoint: {checkpoint_path}")
+
+    cleaned = {}
+    for key, value in state_dict.items():
+        key = key.removeprefix("module.")
+        if key.startswith("value_layer."):
+            continue
+        cleaned[key] = value
+
+    incompatible = model.load_state_dict(cleaned, strict=False)
+
+    unexpected = list(incompatible.unexpected_keys)
+    missing = [key for key in incompatible.missing_keys if not key.startswith("value_layer.")]
+
+    if missing or unexpected:
+        raise RuntimeError(
+            "Policy-only checkpoint load mismatch. "
+            f"missing={missing}, unexpected={unexpected}"
+        )
+
+    print(f"[INFO] Loaded policy weights only from: {checkpoint_path}")
+    print("[INFO] Value head, optimizer, LR scheduler, state scaler, and value scaler are fresh.")
+
 
 @hydra_task_config(args_cli.task, AGENT_CFG_ENTRY_POINT)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
@@ -403,6 +446,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     models["policy"] = model
     models["value"] = model
 
+    if resume_path and args_cli.checkpoint_load_mode == "policy_only":
+        _load_policy_weights_only(model, resume_path, device)
+
     cfg = agent_cfg["agent"].copy()
     if args_cli.distributed and not is_main_process:
         cfg["experiment"] = cfg["experiment"].copy()
@@ -437,9 +483,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     )
 
     # load checkpoint (if specified)
-    if resume_path:
+    if resume_path and args_cli.checkpoint_load_mode == "full":
         if is_main_process:
-            print(f"[INFO] Loading model checkpoint from: {resume_path}")
+            print(f"[INFO] Loading full agent checkpoint from: {resume_path}")
         agent.load(resume_path)
 
     trainer = SequentialTrainer(cfg=agent_cfg["trainer"].copy(), env=env, agents=agent)
