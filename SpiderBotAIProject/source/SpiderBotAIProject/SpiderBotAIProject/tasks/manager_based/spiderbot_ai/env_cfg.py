@@ -282,7 +282,7 @@ class SpiderBotAIEnvCfg(ManagerBasedRLEnvCfg):
     # Mode-dependent reward scales: reward_name -> (WAYPOINT, PATROL, CHASE)
     # Rewards not listed default to (1.0, 1.0, 1.0) — always active at full weight.
     mode_reward_scales: dict = {
-        "progress":           (1.0, 0.0, 1.0),
+        "progress":           (4.0, 0.0, 1.0),
         "velocity_alignment": (1.0, 0.0, 1.0),
         "reach_target":       (1.0, 0.0, 0.5),
         "patrol_exploration": (0.0, 1.0, 0.0),
